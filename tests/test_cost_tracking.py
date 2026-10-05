@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, call, patch
 import httpx
 import litellm
 import pytest
+from agents import RunContextWrapper
+from agents.usage import Usage
 from litellm.types.utils import LlmProviders
 from litellm.utils import ProviderConfigManager
 
@@ -17,6 +19,7 @@ from strix.config.models import (
     _configure_litellm_compatibility,
     _install_openrouter_stream_cost_capture,
 )
+from strix.core.hooks import ReportUsageHooks
 from strix.llm import request_log
 from strix.report.state import (
     ReportState,
@@ -389,3 +392,58 @@ def test_openrouter_request_carries_agent_session_id() -> None:
             assert body()["session_id"] == session_id
     finally:
         request_log.reset_call_context(token)
+
+
+async def test_hook_records_actual_child_model() -> None:
+    state = MagicMock()
+    context = RunContextWrapper(
+        context={"agent_id": "child", "model": "openai/xiaomi/mimo-v2.6-pro"}
+    )
+    response = SimpleNamespace(
+        usage=Usage(requests=1, input_tokens=10, output_tokens=2, total_tokens=12)
+    )
+    hook = ReportUsageHooks(model="openai/worker")
+    with patch("strix.core.hooks.get_global_report_state", return_value=state):
+        await hook.on_llm_end(context, SimpleNamespace(name="child"), response)
+    assert state.record_sdk_usage.call_args.kwargs["model"] == "openai/xiaomi/mimo-v2.6-pro"
+    assert state.record_sdk_usage.call_args.kwargs["agent_id"] == "child"
+    assert state.record_sdk_usage.call_args.kwargs["usage"] is response.usage
+    state.record_sdk_usage.assert_called_once()
+
+
+@pytest.mark.parametrize("raw_model", [None, "", "   ", 123, {}])
+async def test_hook_invalid_model_falls_back(raw_model: object) -> None:
+    state = MagicMock()
+    response = SimpleNamespace(
+        usage=Usage(requests=1, input_tokens=10, output_tokens=2, total_tokens=12)
+    )
+    with patch("strix.core.hooks.get_global_report_state", return_value=state):
+        await ReportUsageHooks(model="openai/worker").on_llm_end(
+            RunContextWrapper(context={"agent_id": "child", "model": raw_model}),
+            SimpleNamespace(name="child"),
+            response,
+        )
+    assert state.record_sdk_usage.call_args.kwargs["model"] == "openai/worker"
+    state.record_sdk_usage.assert_called_once()
+
+
+async def test_hook_missing_model_keeps_legacy_behavior() -> None:
+    state = MagicMock()
+    response = SimpleNamespace(
+        usage=Usage(requests=1, input_tokens=10, output_tokens=2, total_tokens=12)
+    )
+    with patch("strix.core.hooks.get_global_report_state", return_value=state):
+        await ReportUsageHooks(model="openai/worker").on_llm_end(
+            RunContextWrapper(context={"agent_id": "child"}),
+            SimpleNamespace(name="child"),
+            response,
+        )
+    assert state.record_sdk_usage.call_args.kwargs["model"] == "openai/worker"
+    state.record_sdk_usage.assert_called_once()
+
+
+async def test_hook_without_report_state_is_noop() -> None:
+    with patch("strix.core.hooks.get_global_report_state", return_value=None):
+        await ReportUsageHooks(model="openai/worker").on_llm_end(
+            RunContextWrapper(context={}), SimpleNamespace(name="child"), object()
+        )

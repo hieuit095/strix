@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 LLM_TURN_KEY = "llm_turn"
+MODEL_KEY = "model"
 
 # ``BudgetPolicy`` decides what happens when the accumulated LLM cost reaches
 # ``max_budget_usd``.
@@ -35,6 +36,7 @@ LLM_TURN_KEY = "llm_turn"
 # same call when the operator raises the limit or resumes.
 __all__ = [
     "LLM_TURN_KEY",
+    "MODEL_KEY",
     "BudgetExceededError",
     "BudgetPausedError",
     "BudgetPolicy",
@@ -317,11 +319,15 @@ class ReportUsageHooks(RunHooks[dict[str, Any]]):
         if not isinstance(agent_id, str) or not agent_id:
             agent_id = agent_name or "unknown"
 
+        raw_model = ctx.get(MODEL_KEY)
+        actual_model = (
+            raw_model if isinstance(raw_model, str) and raw_model.strip() else self._model
+        )
         try:
             report_state.record_sdk_usage(
                 agent_id=agent_id,
                 agent_name=agent_name,
-                model=self._model,
+                model=actual_model,
                 usage=response.usage,
             )
         except Exception:
