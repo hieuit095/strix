@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Protocol
 
+import httpx
+
 from strix.routing.policy import apply_hard_rules
 from strix.routing.types import DecisionResult, Envelope, RouteDecision, Tier, max_tier, min_tier
 
@@ -56,8 +58,8 @@ class HybridModelRouter:
         try:
             result = await self._client.decide(envelope, "route_tier")
             wanted = self._pick(result.probabilities)
-        except Exception:
-            logger.exception("JEV routing failed; using the rule floor")
+        except (TimeoutError, ValueError, RuntimeError, httpx.HTTPError) as exc:
+            logger.warning("JEV routing failed (%s); using the rule floor", type(exc).__name__)
             wanted, reason = rules.floor, "jev_error"
         wanted = min_tier(max_tier(wanted, rules.floor), rules.ceiling)
         wanted = max(t for t in allowed if t <= wanted)
