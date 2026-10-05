@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
 from agents import RunConfig
 from agents.sandbox import SandboxRunConfig
 from openai import RateLimitError
@@ -35,7 +36,14 @@ from strix.core.execution import (
 from strix.core.execution import (
     spawn_child_agent as start_child_agent,
 )
-from strix.core.hooks import BudgetExceededError, ReportUsageHooks, recomputed_budget_flags
+from strix.core.hooks import (
+    MODEL_KEY,
+    BudgetExceededError,
+    BudgetPausedError,
+    ReportUsageHooks,
+    SubagentBudgetReservedError,
+    recomputed_budget_flags,
+)
 from strix.core.inputs import (
     build_root_task,
     build_scan_targets,
@@ -45,6 +53,11 @@ from strix.core.inputs import (
 from strix.core.paths import run_dir_for, runtime_state_dir
 from strix.core.sessions import open_agent_session
 from strix.report.state import get_global_report_state
+from strix.routing.governor import BudgetGovernor
+from strix.routing.jev import JevClient
+from strix.routing.router import HybridModelRouter
+from strix.routing.runconfig import configured_models, run_config_for_model, validate_routing_config
+from strix.routing.types import Envelope
 from strix.runtime import session_manager
 from strix.telemetry import set_scan_phase
 from strix.telemetry.logging import set_scan_id, setup_scan_logging
@@ -57,6 +70,7 @@ from strix.tools.output_store import (
 if TYPE_CHECKING:
     from agents.memory import SQLiteSession
     from agents.result import RunResultBase
+    from agents.usage import Usage
 
     from strix.runtime.status import StatusSink
     from strix.tools.mcp import (
@@ -177,6 +191,35 @@ def _compose_root_instructions_override(
     )
 
 
+def _guard_routing_budget(
+    coordinator: AgentCoordinator,
+    hooks: ReportUsageHooks,
+    *,
+    interactive: bool,
+) -> None:
+    budget_policy = hooks.budget_policy
+    if coordinator.budget_stopped:
+        raise BudgetExceededError("scan budget stopped")
+    if coordinator.reserve_stopped:
+        raise SubagentBudgetReservedError("sub-agent budget reserved")
+    if coordinator.budget_paused:
+        raise BudgetPausedError("scan budget paused", resume_epoch=coordinator.resume_epoch)
+    report_state = get_global_report_state()
+    limit = hooks.max_budget_usd
+    if report_state is None or limit is None:
+        return
+    cost = report_state.get_total_llm_cost()
+    if (interactive or budget_policy == "pause") and cost >= limit:
+        raise BudgetPausedError("scan budget reached", resume_epoch=coordinator.resume_epoch)
+    stopped, reserved = recomputed_budget_flags(
+        cost, limit, interactive=interactive, budget_policy=budget_policy
+    )
+    if stopped:
+        raise BudgetExceededError("scan budget reached")
+    if reserved:
+        raise SubagentBudgetReservedError("sub-agent budget reserved")
+
+
 async def run_strix_scan(
     *,
     scan_config: dict[str, Any],
@@ -260,6 +303,7 @@ async def run_strix_scan(
         resolved_model
     ):
         configure_sdk_api_route(resolved_model, settings)
+    validate_routing_config(settings, worker_model=resolved_model)
     logger.info("LLM model resolved: %s", resolved_model)
     chat_completions_tools = uses_chat_completions_tool_schema(resolved_model, settings)
     strict_tool_schemas = supports_strict_tool_schemas(resolved_model)
@@ -359,8 +403,46 @@ async def run_strix_scan(
 
     sessions_to_close: list[SQLiteSession] = []
     mcp_registry: McpRegistry | None = None
+    jev_http_client: httpx.AsyncClient | None = None
 
     try:
+        router = None
+        tier_models = configured_models(settings, worker_model=resolved_model)
+        if settings.routing.enabled:
+            routing = settings.routing
+            decision_client = None
+            if routing.jev_enabled:
+
+                def record_routing_usage(usage: Usage) -> None:
+                    report_state = get_global_report_state()
+                    if report_state is not None:
+                        try:
+                            report_state.record_sdk_usage(
+                                agent_id="routing",
+                                agent_name="routing",
+                                model="typesafe/jev",
+                                usage=usage,
+                            )
+                        except (RuntimeError, ValueError, TypeError, KeyError, OSError) as exc:
+                            logger.warning(
+                                "routing usage recording failed (%s)", type(exc).__name__
+                            )
+
+                jev_http_client = httpx.AsyncClient()
+                decision_client = JevClient(
+                    jev_http_client,
+                    base_url=settings.llm.api_base or "",
+                    api_key=settings.llm.api_key or "",
+                    timeout_s=routing.jev_timeout_s,
+                    on_usage=record_routing_usage,
+                )
+            router = HybridModelRouter(
+                decision_client,
+                BudgetGovernor(routing.specialist_cap, routing.expert_cap),
+                specialist_threshold=routing.specialist_threshold,
+                expert_threshold=routing.expert_threshold,
+                available=frozenset(tier_models),
+            )
         targets = scan_config.get("targets") or []
         scan_mode = str(scan_config.get("scan_mode") or "deep")
         is_whitebox = any(t.get("type") == "local_code" for t in targets)
@@ -504,12 +586,35 @@ async def run_strix_scan(
         )
 
         async def spawn_child_agent(**kwargs: Any) -> dict[str, Any]:
+            child_config = run_config
+            if router is not None:
+                _guard_routing_budget(coordinator, hooks, interactive=interactive)
+                decision = await router.route(
+                    Envelope(task=kwargs["task"], skills=tuple(kwargs["skills"]))
+                )
+                _guard_routing_budget(coordinator, hooks, interactive=interactive)
+                child_config = run_config_for_model(
+                    run_config, tier_models[decision.tier], settings
+                )
+                kwargs["routing"] = {
+                    "version": 1,
+                    "tier": decision.tier.name.lower(),
+                    "model": tier_models[decision.tier],
+                    "api_base": (settings.llm.api_base or "").rstrip("/"),
+                    "api_type": settings.llm.api_type,
+                }
+                logger.info(
+                    "child routing tier=%s model=%s reason=%s",
+                    decision.tier.name.lower(),
+                    child_config.model,
+                    decision.reason,
+                )
             return await start_child_agent(
                 coordinator=coordinator,
                 factory=child_agent_builder,
                 agents_db_path=agents_db,
                 sessions_to_close=sessions_to_close,
-                run_config=run_config,
+                run_config=child_config,
                 max_turns=max_turns,
                 interactive=interactive,
                 event_sink=event_sink,
@@ -518,6 +623,7 @@ async def run_strix_scan(
             )
 
         context: dict[str, Any] = {
+            MODEL_KEY: resolved_model,
             "coordinator": coordinator,
             "sandbox_session": bundle["session"],
             "caido_client": bundle["caido_client"],
@@ -645,6 +751,8 @@ async def run_strix_scan(
         raise
     finally:
         configure_spill_writer(None)
+        if jev_http_client is not None:
+            await jev_http_client.aclose()
         # Settle descendants before closing sessions: on a clean finish a child
         # can still be mid-turn, and closing its session underneath it crashes it.
         if root_id is not None:

@@ -21,6 +21,7 @@ from openai import (
 
 from strix.config import codex
 from strix.core.hooks import (
+    MODEL_KEY,
     BudgetExceededError,
     BudgetPausedError,
     SubagentBudgetReservedError,
@@ -356,6 +357,7 @@ async def spawn_child_agent(
     parent_history: list[Any],
     event_sink: StreamEventSink | None = None,
     hooks: RunHooks[dict[str, Any]] | None = None,
+    routing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     parent_id = parent_ctx.get("agent_id")
     if not isinstance(parent_id, str):
@@ -369,6 +371,7 @@ async def spawn_child_agent(
         parent_id,
         task=task,
         skills=skills,
+        routing=routing,
     )
 
     await _start_child_runner(
@@ -1129,6 +1132,8 @@ async def _start_child_runner(
     await coordinator.attach_runtime(child_id, session=session, resumable=interactive)
 
     child_ctx: dict[str, Any] = dict(parent_ctx)
+    if isinstance(run_config.model, str):
+        child_ctx[MODEL_KEY] = run_config.model
     child_ctx["agent_id"] = child_id
     child_ctx["parent_id"] = parent_id
     child_ctx["task"] = task

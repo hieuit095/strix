@@ -20,6 +20,7 @@ import strix.tools.notes.tools as notes_tools
 import strix.tools.todo.tools as todo_tools
 from strix.agents.prompt import render_system_prompt
 from strix.config.models import _split_cached_prefix
+from strix.config.settings import RoutingSettings
 from strix.core import runner
 from strix.core.agents import AgentCoordinator
 from strix.core.inputs import make_model_settings
@@ -49,6 +50,7 @@ def _patch_engine_scaffold(
     monkeypatch.setattr(runner, "set_scan_id", lambda _scan_id: None)
 
     settings = types.SimpleNamespace(
+        routing=RoutingSettings(),
         llm=types.SimpleNamespace(
             model="openai/gpt-4o",
             reasoning_effort="high",

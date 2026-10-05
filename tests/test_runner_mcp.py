@@ -17,6 +17,7 @@ from agents import ModelSettings
 import strix.tools.mcp as mcp_pkg
 import strix.tools.notes.tools as notes_tools
 import strix.tools.todo.tools as todo_tools
+from strix.config.settings import RoutingSettings
 from strix.core import runner
 from strix.core.agents import AgentCoordinator
 from strix.runtime import session_manager
@@ -25,6 +26,7 @@ from strix.tools.mcp import McpConnectionConfig, McpConnectionRequest
 
 def _settings() -> Any:
     return types.SimpleNamespace(
+        routing=RoutingSettings(),
         llm=types.SimpleNamespace(
             model="openai/gpt-4o",
             reasoning_effort="high",
