@@ -198,6 +198,37 @@ class ViewerSettings(BaseSettings):
     app_url: str = Field(default="https://app.strix.ai", alias="STRIX_APP_URL")
 
 
+class RoutingSettings(BaseSettings):
+    """Optional child-model routing on the main CommandCode connection."""
+
+    model_config = _BASE_CONFIG
+
+    enabled: bool = Field(default=False, alias="STRIX_ROUTING_ENABLED")
+    specialist_model: str | None = Field(default=None, alias="STRIX_ROUTING_SPECIALIST_MODEL")
+    expert_model: str | None = Field(default=None, alias="STRIX_ROUTING_EXPERT_MODEL")
+    jev_enabled: bool = Field(default=False, alias="STRIX_ROUTING_JEV_ENABLED")
+    jev_timeout_s: float = Field(
+        default=5, alias="STRIX_ROUTING_JEV_TIMEOUT_S", gt=0, allow_inf_nan=False
+    )
+    specialist_threshold: float = Field(
+        default=0.65, alias="STRIX_ROUTING_SPECIALIST_THRESHOLD", gt=0, le=1, allow_inf_nan=False
+    )
+    expert_threshold: float = Field(
+        default=0.65, alias="STRIX_ROUTING_EXPERT_THRESHOLD", gt=0, le=1, allow_inf_nan=False
+    )
+    specialist_cap: float = Field(
+        default=0.25, alias="STRIX_ROUTING_SPECIALIST_CAP", ge=0, le=1, allow_inf_nan=False
+    )
+    expert_cap: float = Field(
+        default=0.05, alias="STRIX_ROUTING_EXPERT_CAP", ge=0, le=1, allow_inf_nan=False
+    )
+
+    @field_validator("specialist_model", "expert_model", mode="before")
+    @classmethod
+    def _strip_model(cls, value: object) -> object:
+        return (value.strip() or None) if isinstance(value, str) else value
+
+
 class Settings(BaseSettings):
     model_config = _BASE_CONFIG
 
@@ -208,3 +239,4 @@ class Settings(BaseSettings):
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
     integrations: IntegrationSettings = Field(default_factory=IntegrationSettings)
     viewer: ViewerSettings = Field(default_factory=ViewerSettings)
+    routing: RoutingSettings = Field(default_factory=RoutingSettings)
