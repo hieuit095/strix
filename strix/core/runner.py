@@ -56,7 +56,12 @@ from strix.report.state import get_global_report_state
 from strix.routing.governor import BudgetGovernor
 from strix.routing.jev import JevClient
 from strix.routing.router import HybridModelRouter
-from strix.routing.runconfig import configured_models, run_config_for_model, validate_routing_config
+from strix.routing.runconfig import (
+    configured_models,
+    run_config_for_model,
+    validate_routing_config,
+    validate_saved_bindings,
+)
 from strix.routing.types import Envelope
 from strix.runtime import session_manager
 from strix.telemetry import set_scan_phase
@@ -340,6 +345,9 @@ async def run_strix_scan(
                 f"Cannot resume scan {scan_id}: missing SDK session database at {agents_db}",
             )
         await coordinator.restore(snap)
+        validate_saved_bindings(coordinator.metadata, settings, worker_model=resolved_model)
+        if coordinator.routing_counts is not None and not settings.routing.enabled:
+            raise RuntimeError("routing must remain enabled to resume saved counts")
         report_state = get_global_report_state()
         if report_state is not None:
             budget_stopped, reserve_stopped = recomputed_budget_flags(
@@ -436,9 +444,13 @@ async def run_strix_scan(
                     timeout_s=routing.jev_timeout_s,
                     on_usage=record_routing_usage,
                 )
+            governor = BudgetGovernor(routing.specialist_cap, routing.expert_cap)
+            if coordinator.routing_counts is not None:
+                governor.counts = coordinator.routing_counts
+            coordinator.routing_counts = governor.counts
             router = HybridModelRouter(
                 decision_client,
-                BudgetGovernor(routing.specialist_cap, routing.expert_cap),
+                governor,
                 specialist_threshold=routing.specialist_threshold,
                 expert_threshold=routing.expert_threshold,
                 available=frozenset(tier_models),
@@ -653,6 +665,7 @@ async def run_strix_scan(
                 root_id=root_id,
                 event_sink=event_sink,
                 hooks=hooks,
+                settings=settings,
             )
 
         initial_input: Any = [] if is_resume else root_task

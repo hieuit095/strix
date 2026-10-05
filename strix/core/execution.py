@@ -36,6 +36,7 @@ from strix.core.sessions import (
 )
 from strix.llm import request_log
 from strix.llm.compaction import is_context_overflow, maybe_compact
+from strix.routing.runconfig import run_config_for_model, validate_saved_bindings
 
 
 if TYPE_CHECKING:
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
     from agents.memory import Session, SQLiteSession
     from agents.result import RunResultBase
 
+    from strix.config.settings import Settings
     from strix.core.agents import AgentCoordinator, Status
 
 
@@ -420,7 +422,12 @@ async def respawn_subagents(
     root_id: str,
     event_sink: StreamEventSink | None = None,
     hooks: RunHooks[dict[str, Any]] | None = None,
+    settings: Settings | None = None,
 ) -> None:
+    if any("routing" in md for md in coordinator.metadata.values()):
+        if settings is None or not isinstance(run_config.model, str):
+            raise RuntimeError("routing bindings require settings and a worker model for resume")
+        validate_saved_bindings(coordinator.metadata, settings, worker_model=run_config.model)
     async with coordinator._lock:
         agents_snapshot = [
             (aid, status, dict(coordinator.metadata.get(aid, {})))
@@ -457,12 +464,15 @@ async def respawn_subagents(
 
             child_skills = list(md.get("skills") or [])
             child_agent = factory(name=name, skills=child_skills)
+            child_config = run_config
+            if "routing" in md and settings is not None:
+                child_config = run_config_for_model(run_config, md["routing"]["model"], settings)
             await _start_child_runner(
                 parent_ctx=parent_ctx,
                 coordinator=coordinator,
                 agents_db_path=agents_db_path,
                 sessions_to_close=sessions_to_close,
-                run_config=run_config,
+                run_config=child_config,
                 max_turns=max_turns,
                 interactive=interactive,
                 child_agent=child_agent,

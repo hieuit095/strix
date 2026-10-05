@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from agents.items import TResponseInputItem
     from agents.memory import Session
 
+    from strix.routing.types import Tier
+
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,58 @@ class AgentRuntime:
     user_wake_required: bool = False
 
 
+def _restore_routing_counts(snap: dict[str, Any]) -> dict[Tier, int] | None:
+    # Routing is optional; load its enum only when restoring routed state.
+    from strix.routing.types import Tier  # noqa: PLC0415
+
+    counts: dict[Tier, int] | None = None
+    if "routing" in snap:
+        candidate = snap["routing"]
+        if (
+            not isinstance(candidate, dict)
+            or type(cast("dict[str, Any]", candidate).get("version")) is not int
+        ):
+            raise RuntimeError("routing snapshot version is invalid")
+        routing = cast("dict[str, Any]", candidate)
+        if routing["version"] != 1:
+            raise RuntimeError("routing snapshot version is invalid")
+        candidate = routing.get("counts")
+        if not isinstance(candidate, dict) or set(cast("dict[str, Any]", candidate)) != {
+            tier.name.lower() for tier in Tier
+        }:
+            raise RuntimeError("routing snapshot counts keys are invalid")
+        raw = cast("dict[str, Any]", candidate)
+        counts = {}
+        for tier in Tier:
+            value = raw[tier.name.lower()]
+            if type(value) is not int or value < 0:
+                raise RuntimeError("routing snapshot count must be a nonnegative integer")
+            counts[tier] = value
+    else:
+        for md in snap.get("metadata", {}).values():
+            if "routing" not in md:
+                continue
+            candidate = md["routing"]
+            tier_name = (
+                cast("dict[str, Any]", candidate).get("tier")
+                if isinstance(candidate, dict)
+                else None
+            )
+            if not isinstance(tier_name, str) or tier_name not in {
+                tier.name.lower() for tier in Tier
+            }:
+                raise RuntimeError("routing legacy binding tier is invalid")
+            if counts is None:
+                counts = dict.fromkeys(Tier, 0)
+            counts[Tier[tier_name.upper()]] += 1
+        if counts is not None:
+            logger.warning(
+                "routing counts reconstructed from saved child bindings; "
+                "admission history may be incomplete"
+            )
+    return counts
+
+
 class AgentCoordinator:
     """Single owner for graph state, SDK runtimes, messages, and resume snapshots."""
 
@@ -61,6 +115,7 @@ class AgentCoordinator:
         self.parent_of: dict[str, str | None] = {}
         self.names: dict[str, str] = {}
         self.metadata: dict[str, dict[str, Any]] = {}
+        self.routing_counts: dict[Tier, int] | None = None
         self.pending_counts: dict[str, int] = {}
         self.errors: dict[str, str] = {}
         self.recovery_counts: dict[str, int] = {}
@@ -625,6 +680,19 @@ class AgentCoordinator:
     async def snapshot(self) -> dict[str, Any]:
         async with self._lock:
             return {
+                **(
+                    {
+                        "routing": {
+                            "version": 1,
+                            "counts": {
+                                tier.name.lower(): count
+                                for tier, count in self.routing_counts.items()
+                            },
+                        }
+                    }
+                    if self.routing_counts is not None
+                    else {}
+                ),
                 "statuses": dict(self.statuses),
                 "parent_of": dict(self.parent_of),
                 "names": dict(self.names),
@@ -645,7 +713,9 @@ class AgentCoordinator:
             }
 
     async def restore(self, snap: dict[str, Any]) -> None:
+        counts = _restore_routing_counts(snap)
         async with self._lock:
+            self.routing_counts = counts
             self.statuses = dict(snap.get("statuses", {}))
             self.parent_of = dict(snap.get("parent_of", {}))
             self.names = dict(snap.get("names", {}))
