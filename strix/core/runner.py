@@ -10,7 +10,7 @@ import logging
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 from agents import RunConfig
@@ -455,11 +455,12 @@ async def run_strix_scan(
                 expert_threshold=routing.expert_threshold,
                 available=frozenset(tier_models),
             )
-        targets = scan_config.get("targets") or []
+        targets = cast("list[dict[str, Any]]", scan_config.get("targets") or [])
         scan_mode = str(scan_config.get("scan_mode") or "deep")
         is_whitebox = any(t.get("type") == "local_code" for t in targets)
         diff_scope = scan_config.get("diff_scope")
-        is_diff_scoped = bool(isinstance(diff_scope, dict) and diff_scope.get("active"))
+        diff_scope_data = cast("dict[str, Any]", diff_scope) if isinstance(diff_scope, dict) else {}
+        is_diff_scoped = bool(diff_scope_data.get("active"))
         skills = list(scan_config.get("skills") or [])
         root_task = build_root_task(scan_config)
         model_settings = make_model_settings(
@@ -691,8 +692,7 @@ async def run_strix_scan(
                 len(resume_instruction),
             )
 
-        async with coordinator._lock:
-            root_status = coordinator.statuses.get(root_id)
+        root_status = await coordinator.get_status(root_id)
 
         set_scan_phase("agent_loop")
         result = await run_agent_loop(
@@ -715,11 +715,12 @@ async def run_strix_scan(
             if isinstance(final, str):
                 try:
                     parsed = json.loads(final)
-                    scan_completed = bool(isinstance(parsed, dict) and parsed.get("scan_completed"))
+                    if isinstance(parsed, dict):
+                        scan_completed = bool(cast("dict[str, Any]", parsed).get("scan_completed"))
                 except (ValueError, TypeError):
                     scan_completed = False
             elif isinstance(final, dict):
-                scan_completed = bool(final.get("scan_completed"))
+                scan_completed = bool(cast("dict[str, Any]", final).get("scan_completed"))
             if not scan_completed:
                 logger.error(
                     "Scan %s ended without calling finish_scan. The agent "
@@ -727,15 +728,14 @@ async def run_strix_scan(
                     "so no executive report was written. Final output (first "
                     "300 chars): %r",
                     scan_id,
-                    str(final)[:300],
+                    str(cast("object", final))[:300],
                 )
         return result  # noqa: TRY300
     except BudgetExceededError as exc:
         logger.info("Scan %s stopped: %s", scan_id, exc)
         _note_exit_reason("budget_exceeded")
-        if root_id is not None:
-            with contextlib.suppress(Exception):
-                await coordinator.set_status(root_id, "stopped")
+        with contextlib.suppress(Exception):
+            await coordinator.set_status(root_id, "stopped")
         return None
     except RateLimitError as exc:
         logger.warning(
@@ -746,21 +746,18 @@ async def run_strix_scan(
             scan_id,
         )
         _note_exit_reason("rate_limited")
-        if root_id is not None:
-            with contextlib.suppress(Exception):
-                await coordinator.set_status(root_id, "stopped")
+        with contextlib.suppress(Exception):
+            await coordinator.set_status(root_id, "stopped")
         return None
     except (asyncio.CancelledError, KeyboardInterrupt):
         logger.info("Scan %s interrupted by the user", scan_id)
-        if root_id is not None:
-            with contextlib.suppress(Exception):
-                await coordinator.set_status(root_id, "running")
+        with contextlib.suppress(Exception):
+            await coordinator.set_status(root_id, "running")
         raise
     except BaseException:
         logger.exception("Strix scan %s failed", scan_id)
-        if root_id is not None:
-            with contextlib.suppress(Exception):
-                await coordinator.set_status(root_id, "failed")
+        with contextlib.suppress(Exception):
+            await coordinator.set_status(root_id, "failed")
         raise
     finally:
         configure_spill_writer(None)
@@ -768,9 +765,8 @@ async def run_strix_scan(
             await jev_http_client.aclose()
         # Settle descendants before closing sessions: on a clean finish a child
         # can still be mid-turn, and closing its session underneath it crashes it.
-        if root_id is not None:
-            with contextlib.suppress(Exception):
-                await coordinator.cancel_descendants(root_id)
+        with contextlib.suppress(Exception):
+            await coordinator.cancel_descendants(root_id)
         for s in sessions_to_close:
             with contextlib.suppress(Exception):
                 s.close()
@@ -778,7 +774,7 @@ async def run_strix_scan(
             with contextlib.suppress(Exception):
                 await mcp_registry.close()
         with contextlib.suppress(Exception):
-            await coordinator._maybe_snapshot()
+            await coordinator.maybe_snapshot()
         if cleanup_on_exit:
             logger.info("Tearing down sandbox session for scan %s", scan_id)
             await session_manager.cleanup(scan_id)

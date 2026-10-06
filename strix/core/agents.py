@@ -51,7 +51,7 @@ class AgentRuntime:
     # agent is terminal nothing will ever read its mailbox again.
     resumable: bool = True
     wake: asyncio.Event = field(default_factory=asyncio.Event)
-    mailbox: list[dict[str, Any]] = field(default_factory=list)
+    mailbox: list[dict[str, Any]] = field(default_factory=lambda: cast("list[dict[str, Any]]", []))
     user_wake_required: bool = False
 
 
@@ -430,6 +430,11 @@ class AgentCoordinator:
         logger.info("agent.status %s=%s", agent_id, status)
         await self._maybe_snapshot()
 
+    async def get_status(self, agent_id: str) -> Status | None:
+        """Read an agent status while holding the coordinator lock."""
+        async with self._lock:
+            return self.statuses.get(agent_id)
+
     def _set_status_locked(
         self, agent_id: str, status: Status | str, *, error: str | None = None
     ) -> None:
@@ -586,7 +591,7 @@ class AgentCoordinator:
         await self._maybe_snapshot()
 
     async def cancel_descendants(self, agent_id: str) -> None:
-        tasks = []
+        tasks: list[asyncio.Task[Any]] = []
         async with self._lock:
             for aid in reversed(self._subtree_order_locked(agent_id)):
                 task = self.runtimes.get(aid, AgentRuntime()).task
@@ -725,12 +730,16 @@ class AgentCoordinator:
             self.recovery_counts = dict(snap.get("recovery_counts", {}))
             self.idle_resume_counts = dict(snap.get("idle_resume_counts", {}))
             self.wait_kinds = dict(snap.get("wait_kinds", {}))
-            mailboxes = snap.get("mailboxes", {})
+            mailboxes: Any = snap.get("mailboxes", {})
             if isinstance(mailboxes, dict):
-                for aid, msgs in mailboxes.items():
+                for aid, msgs in cast("dict[str, object]", mailboxes).items():
                     if isinstance(msgs, list):
                         runtime = self.runtimes.setdefault(aid, AgentRuntime())
-                        runtime.mailbox = [dict(m) for m in msgs if isinstance(m, dict)]
+                        runtime.mailbox = [
+                            cast("dict[str, Any]", message)
+                            for message in cast("list[object]", msgs)
+                            if isinstance(message, dict)
+                        ]
             self._budget_stopped = bool(snap.get("budget_stopped", False))
             self._reserve_stopped = bool(snap.get("reserve_stopped", False))
             self._budget_paused = bool(snap.get("budget_paused", False))
@@ -758,6 +767,10 @@ class AgentCoordinator:
             tmp_path.replace(path)
         except Exception:
             logger.exception("coordinator snapshot to %s failed", path)
+
+    async def maybe_snapshot(self) -> None:
+        """Persist the current coordinator state when snapshotting is enabled."""
+        await self._maybe_snapshot()
 
 
 def coordinator_from_context(ctx: dict[str, Any]) -> AgentCoordinator | None:
