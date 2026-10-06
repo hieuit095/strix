@@ -12,7 +12,7 @@ import json
 import logging
 import re
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from agents import RunContextWrapper, function_tool
 
@@ -21,6 +21,8 @@ from strix.tools.proxy.tools import existing_request_ids
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from strix.report.state import ReportState
 
 
@@ -145,7 +147,7 @@ def _calculate_cvss(breakdown: dict[str, str]) -> tuple[float, str, str]:
     try:
         cvss = CVSS3(vector)
         score = cvss.scores()[0]
-        base_severity = cvss.severities()[0].lower()
+        base_severity = cast("str", cvss.severities()[0]).lower()
     except Exception as exc:
         msg = f"Failed to calculate CVSS for validated vector: {vector}"
         raise ValueError(msg) from exc
@@ -190,7 +192,8 @@ def _normalize_http_exchange_ids(raw: Any) -> tuple[list[str] | None, list[str]]
     normalized: list[str] = []
     errors: list[str] = []
     seen: set[str] = set()
-    for index, value in enumerate(raw):
+    raw_values: Sequence[Any] = cast("Any", raw)
+    for index, value in enumerate(raw_values):
         if not isinstance(value, str):
             errors.append(f"http_exchange_ids[{index}] must be a string")
             continue
@@ -275,6 +278,7 @@ def _validate_cvss_breakdown(breakdown: Any) -> list[str]:
     """Check the 8 CVSS metrics are all present with legal values."""
     if not isinstance(breakdown, dict) or not breakdown:
         return ["cvss_breakdown: must be an object with the 8 CVSS metrics"]
+    breakdown = cast("dict[str, Any]", breakdown)
     return [
         f"Invalid {name}: {breakdown.get(name)}. Must be one of: {valid}"
         for name, valid in _CVSS_VALID.items()
@@ -965,7 +969,8 @@ async def _do_create(
 
 def _caller_identity(ctx: RunContextWrapper) -> tuple[str | None, str | None]:
     """Return the (agent_id, agent_name) of the agent invoking this tool."""
-    inner = ctx.context if isinstance(ctx.context, dict) else {}
+    context: Any = ctx.context
+    inner = cast("dict[str, Any]", context) if isinstance(context, dict) else {}
     raw_agent_id = inner.get("agent_id")
     agent_id = raw_agent_id if isinstance(raw_agent_id, str) else None
     agent_name: str | None = None
@@ -973,7 +978,7 @@ def _caller_identity(ctx: RunContextWrapper) -> tuple[str | None, str | None]:
     if agent_id is not None and coordinator is not None:
         names = getattr(coordinator, "names", {})
         if isinstance(names, dict):
-            raw_agent_name = names.get(agent_id)
+            raw_agent_name = cast("dict[str, Any]", names).get(agent_id)
             agent_name = raw_agent_name if isinstance(raw_agent_name, str) else None
     return agent_id, agent_name
 
