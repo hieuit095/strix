@@ -399,9 +399,10 @@ def pick_run(
     console: Console | None = None,
     stdin: TextIO | None = None,
 ) -> RunSummary | None:
-    stdin = stdin or sys.stdin
+    if stdin is None:
+        stdin = sys.stdin
     console = console or Console()
-    if not (hasattr(stdin, "isatty") and stdin.isatty() and console.is_terminal):
+    if stdin is None or not (stdin.isatty() and console.is_terminal):
         raise PickerUnavailableError(
             "--resume needs a run name when there is no interactive terminal"
         )
