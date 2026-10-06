@@ -7,7 +7,7 @@ import json
 import os
 import time
 import urllib.request
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 
@@ -137,7 +137,7 @@ async def list_requests_with_client(
     sort_order: SortOrder = "desc",
     scope_id: str | None = None,
 ) -> Any:
-    builder = client.request.list().first(first)
+    builder: Any = client.request.list().first(first)
     if httpql_filter:
         builder = builder.filter(httpql_filter)
     if after:
@@ -598,13 +598,14 @@ def _clean_sitemap_metadata(node: dict[str, Any]) -> dict[str, Any]:
         "label": node["label"],
         "has_descendants": node["hasDescendants"],
     }
-    meta = node.get("metadata")
-    if isinstance(meta, dict) and (meta.get("isTls") is not None or meta.get("port")):
+    meta: Any = node.get("metadata")
+    meta_data = cast("dict[str, Any]", meta) if isinstance(meta, dict) else {}
+    if meta_data.get("isTls") is not None or meta_data.get("port"):
         meta_out: dict[str, Any] = {}
-        if meta.get("isTls") is not None:
-            meta_out["is_tls"] = meta["isTls"]
-        if meta.get("port"):
-            meta_out["port"] = meta["port"]
+        if meta_data.get("isTls") is not None:
+            meta_out["is_tls"] = meta_data["isTls"]
+        if meta_data.get("port"):
+            meta_out["port"] = meta_data["port"]
         cleaned["metadata"] = meta_out
     return cleaned
 
@@ -618,7 +619,7 @@ def _clean_sitemap_request_summary(req: dict[str, Any] | None) -> dict[str, Any]
         out["method"] = req["method"]
     if req.get("path"):
         out["path"] = req["path"]
-    resp = req.get("response") or {}
+    resp: Any = req.get("response") or {}
     if resp.get("statusCode"):
         out["status_code"] = resp["statusCode"]
     return out or None
@@ -651,12 +652,13 @@ async def list_sitemap_with_client(
     pagination, so we fetch all edges for the requested level and slice
     client-side.
     """
+    raw: Any
     if parent_id:
         raw = await client.graphql.query(
             _SITEMAP_DESCENDANTS_QUERY,
             variables={"parentId": parent_id, "depth": depth},
         )
-        data = raw.get("sitemapDescendantEntries") or {}
+        data: Any = raw.get("sitemapDescendantEntries") or {}
     else:
         raw = await client.graphql.query(
             _SITEMAP_ROOTS_QUERY,
@@ -664,8 +666,9 @@ async def list_sitemap_with_client(
         )
         data = raw.get("sitemapRootEntries") or {}
 
-    edges = data.get("edges") or []
-    total = (data.get("count") or {}).get("value", 0)
+    edges = cast("list[dict[str, Any]]", data.get("edges") or [])
+    count_data = cast("dict[str, Any]", data.get("count") or {})
+    total = cast("int", count_data.get("value", 0))
     skip = max(0, (page - 1) * page_size)
     sliced = [edge["node"] for edge in edges[skip : skip + page_size]]
 
@@ -694,12 +697,12 @@ async def view_sitemap_entry_with_client(
     entry_id: str,
 ) -> dict[str, Any]:
     raw = await client.graphql.query(_SITEMAP_ENTRY_QUERY, variables={"id": entry_id})
-    entry = raw.get("sitemapEntry")
+    entry: Any = raw.get("sitemapEntry")
     if not entry:
         return {"success": False, "error": f"Sitemap entry {entry_id} not found"}
 
     cleaned = _clean_sitemap_metadata(entry)
-    primary = entry.get("request") or {}
+    primary: Any = entry.get("request") or {}
     if primary:
         primary_clean: dict[str, Any] = {}
         if primary.get("method"):
@@ -711,8 +714,8 @@ async def view_sitemap_entry_with_client(
         if primary_clean:
             cleaned["request"] = primary_clean
 
-    related = entry.get("requests") or {}
-    related_edges = related.get("edges") or []
+    related: Any = entry.get("requests") or {}
+    related_edges = cast("list[dict[str, Any]]", related.get("edges") or [])
     related_nodes = [edge["node"] for edge in related_edges]
     related_clean = [
         summary
@@ -721,7 +724,7 @@ async def view_sitemap_entry_with_client(
     ]
     cleaned["related_requests"] = {
         "requests": related_clean,
-        "total_count": (related.get("count") or {}).get("value", 0),
+        "total_count": cast("dict[str, Any]", related.get("count") or {}).get("value", 0),
     }
     return {"success": True, "entry": cleaned}
 
