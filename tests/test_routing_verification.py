@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from scripts import verify_hybrid_routing
 from strix.routing.governor import BudgetGovernor
 from strix.routing.router import HybridModelRouter
 from strix.routing.runconfig import configured_models
@@ -9,12 +10,42 @@ from strix.routing.types import DecisionResult, Envelope, Tier
 from tests.test_routing_runconfig import commandcode_settings
 
 
+def test_jev_error_evidence_requires_a_matching_real_failure() -> None:
+    decision = [
+        {
+            "tier": "specialist",
+            "model": "openai/xiaomi/mimo-v2.6-pro",
+            "reason": "jev_error",
+        }
+    ]
+    audit = getattr(verify_hybrid_routing, "jev_evidence_matches", None)
+    assert callable(audit)
+    assert not audit(decision, [], [])
+    assert audit(decision, [], ["HTTPStatusError"])
+
+
+def test_jev_route_log_requires_the_observed_choice() -> None:
+    decisions = [
+        {"reason": "jev", "jev_choice": "specialist"},
+        {"reason": "rule", "jev_choice": None},
+        {"reason": "jev_error", "jev_choice": None},
+    ]
+    audit = getattr(verify_hybrid_routing, "jev_choice_evidence_matches", None)
+    assert callable(audit)
+    assert audit(decisions)
+    assert not audit([{"reason": "jev", "jev_choice": None}])
+
+
 class SyntheticJev:
     def __init__(
-        self, probabilities: dict[str, float] | None = None, error: Exception | None = None
+        self,
+        probabilities: dict[str, float] | None = None,
+        error: Exception | None = None,
+        choice: str | None = None,
     ):
         self.probabilities = probabilities or {"worker": 1.0, "specialist": 0.0, "expert": 0.0}
         self.error = error
+        self.choice = choice
         self.calls = 0
 
     async def decide(self, _envelope: Envelope, question: str) -> DecisionResult:
@@ -22,7 +53,7 @@ class SyntheticJev:
         self.calls += 1
         if self.error:
             raise self.error
-        return DecisionResult(self.probabilities, 8, 2)
+        return DecisionResult(self.probabilities, 8, 2, self.choice)
 
 
 def router(
@@ -177,3 +208,27 @@ async def test_synthetic_route_flow_selects_worker_specialist_then_expert_model(
         (Tier.EXPERT, "openai/gpt-6.1-sol"),
     ]
     assert jev.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_jev_choices_map_to_worker_specialist_and_expert_models() -> None:
+    settings = commandcode_settings()
+    models = configured_models(settings, worker_model="openai/deepseek/deepseek-v4.1-flash")
+    cases = (
+        ("worker", ("business_logic",), {"worker": 0.1, "specialist": 0.8, "expert": 0.1}),
+        ("specialist", ("business_logic",), {"worker": 0.1, "specialist": 0.8, "expert": 0.1}),
+        ("expert", ("rce",), {"worker": 0.05, "specialist": 0.05, "expert": 0.9}),
+    )
+    expected_models = (
+        (Tier.WORKER, "openai/deepseek/deepseek-v4.1-flash"),
+        (Tier.SPECIALIST, "openai/xiaomi/mimo-v2.6-pro"),
+        (Tier.EXPERT, "openai/gpt-6.1-sol"),
+    )
+    observed = []
+    for (choice, skills, probabilities), (tier, model) in zip(cases, expected_models, strict=True):
+        jev = SyntheticJev(probabilities, choice=choice)
+        decision = await router(jev).route(Envelope("synthetic", skills))
+        observed.append((decision.jev_choice, decision.tier, models[decision.tier]))
+        assert (decision.tier, models[decision.tier]) == (tier, model)
+    assert [entry[0] for entry in observed] == ["worker", "specialist", "expert"]
+    assert [entry[1:] for entry in observed] == list(expected_models)

@@ -29,7 +29,14 @@ EXPECTED_MODELS = {
     "expert": "openai/gpt-6.1-sol",
 }
 ROUTE_LINE = re.compile(
-    r"child routing tier=(worker|specialist|expert) model=([^ ]+) reason=([a-z_]+)"
+    r"child routing tier=(worker|specialist|expert) model=([^ ]+) reason=([a-z_]+) "
+    r"jev_choice=(worker|specialist|expert|none)"
+)
+JEV_ANSWER_LINE = re.compile(
+    r"JEV routing answer choice=(worker|specialist|expert) input_tokens=(\d+) output_tokens=(\d+)"
+)
+JEV_FAILURE_LINE = re.compile(
+    r"JEV routing failed \(([A-Za-z][A-Za-z0-9_]*)\); using the rule floor"
 )
 
 
@@ -116,16 +123,32 @@ def _new_run(before: set[str]) -> Path | None:
     return max(candidates, key=lambda path: path.stat().st_mtime) if candidates else None
 
 
-def _load_routes(run_dir: Path) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+def _load_routes(
+    run_dir: Path,
+) -> tuple[list[dict[str, str]], list[dict[str, Any]], list[dict[str, Any]], list[str]]:
     log_path = run_dir / "strix.log"
     text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
     decisions = [
-        {"tier": match.group(1), "model": match.group(2), "reason": match.group(3)}
+        {
+            "tier": match.group(1),
+            "model": match.group(2),
+            "reason": match.group(3),
+            "jev_choice": None if match.group(4) == "none" else match.group(4),
+        }
         for match in ROUTE_LINE.finditer(text)
     ]
+    jev_answers = [
+        {
+            "choice": match.group(1),
+            "input_tokens": int(match.group(2)),
+            "output_tokens": int(match.group(3)),
+        }
+        for match in JEV_ANSWER_LINE.finditer(text)
+    ]
+    jev_failures = [match.group(1) for match in JEV_FAILURE_LINE.finditer(text)]
     state_path = run_dir / ".state" / "agents.json"
     if not state_path.exists():
-        return decisions, []
+        return decisions, [], jev_answers, jev_failures
     state = json.loads(state_path.read_text(encoding="utf-8"))
     metadata = state.get("metadata") or {}
     bindings = [
@@ -133,7 +156,22 @@ def _load_routes(run_dir: Path) -> tuple[list[dict[str, str]], list[dict[str, An
         for value in metadata.values()
         if isinstance(value, dict) and isinstance(value.get("routing"), dict)
     ]
-    return decisions, bindings
+    return decisions, bindings, jev_answers, jev_failures
+
+
+def jev_evidence_matches(
+    decisions: list[dict[str, Any]], answers: list[dict[str, Any]], failures: list[str]
+) -> bool:
+    answered = sum(row["reason"] in {"jev", "governor"} for row in decisions)
+    errored = sum(row["reason"] == "jev_error" for row in decisions)
+    return len(answers) == answered and len(failures) == errored
+
+
+def jev_choice_evidence_matches(decisions: list[dict[str, Any]]) -> bool:
+    return all(
+        (row["reason"] in {"jev", "governor"}) == (row.get("jev_choice") is not None)
+        for row in decisions
+    )
 
 
 def run() -> int:  # noqa: PLR0912, PLR0915
@@ -197,6 +235,9 @@ def run() -> int:  # noqa: PLR0912, PLR0915
     before = {path.name for path in RUNS.iterdir() if path.is_dir()}
     instruction = (
         "Perform a read-only quick security scan of the authorized local application. "
+        "Prioritize authorization boundaries, IDOR, broken function-level authorization, and "
+        "business-logic flows where relevant. Use Strix's normal child-agent workflow when a "
+        "separate validation task is warranted; do not force a tier/model or invent a finding. "
         "Do not modify files, use destructive actions, or test external services."
     )
     command = [
@@ -274,7 +315,7 @@ def run() -> int:  # noqa: PLR0912, PLR0915
         f"expected={models['worker']}; observed={','.join(sorted(root_models)) or 'none'}",
     )
 
-    decisions, bindings = _load_routes(run_dir)
+    decisions, bindings, jev_answers, jev_failures = _load_routes(run_dir)
     expected_by_tier = EXPECTED_MODELS
     log_matches = all(
         row["model"] == expected_by_tier[row["tier"]]
@@ -295,10 +336,24 @@ def run() -> int:  # noqa: PLR0912, PLR0915
         f"decisions={len(decisions)}; bindings={len(bindings)}; "
         f"tiers={dict(Counter(row['tier'] for row in decisions))}",
     )
+    tier_distribution = dict(Counter(row["tier"] for row in decisions))
+    jev_choice_distribution = dict(
+        Counter(row["jev_choice"] for row in decisions if row["jev_choice"])
+    )
+    choice_routes = [
+        (row["jev_choice"], row["tier"], row["reason"]) for row in decisions if row["jev_choice"]
+    ]
     for tier in ("worker", "specialist", "expert"):
         seen = any(row["tier"] == tier for row in decisions)
         if seen:
             passed &= report("PASS", f"observed {tier} route", models[tier])
+        elif jev_enabled:
+            passed &= report(
+                "PASS",
+                f"{tier} route distribution",
+                f"no {tier} child; tiers={tier_distribution}; "
+                f"JEV choices={jev_choice_distribution}; choice-to-tier/reason={choice_routes}",
+            )
         elif tier == "expert" and not jev_enabled:
             report(
                 "SKIP",
@@ -313,13 +368,20 @@ def run() -> int:  # noqa: PLR0912, PLR0915
             )
 
     if jev_enabled:
-        jev_seen = any(row["reason"] in {"jev", "jev_error"} for row in decisions)
+        jev_seen = any(row["reason"] == "jev" for row in decisions)
+        evidence_matches = jev_evidence_matches(decisions, jev_answers, jev_failures)
+        choice_matches = jev_choice_evidence_matches(decisions)
         passed &= report(
-            "PASS" if jev_seen else "FAIL",
+            "PASS" if jev_seen and evidence_matches and choice_matches else "FAIL",
             "JEV path",
-            "enabled under declared non-ZDR policy"
-            if jev_seen
-            else "enabled but no open-choice JEV decision was logged",
+            f"enabled; jev decisions={sum(row['reason'] == 'jev' for row in decisions)}; "
+            f"answers={len(jev_answers)}; jev_error decisions="
+            f"{sum(row['reason'] == 'jev_error' for row in decisions)}; "
+            f"matching failures={len(jev_failures)}; evidence_matches={evidence_matches}; "
+            f"choice_matches={choice_matches}"
+            if jev_seen and evidence_matches and choice_matches
+            else f"no valid live JEV evidence: jev_decision={jev_seen}; "
+            f"evidence_matches={evidence_matches}; choice_matches={choice_matches}",
         )
     else:
         report(
@@ -340,7 +402,7 @@ def run() -> int:  # noqa: PLR0912, PLR0915
         "command": (
             "timeout <seconds>s python /tmp/strix-hybrid-rate-runner.py --run-scan "
             "-n -t <local-target> "
-            "--scan-mode quick --max-budget 5"
+            "--scan-mode quick --max-budget 5 (STRIX_ROUTING_JEV_ENABLED=true)"
         ),
         "run_name": run_dir.name,
         "scan_exit_code": scan_exit,
@@ -348,6 +410,10 @@ def run() -> int:  # noqa: PLR0912, PLR0915
         "models": models,
         "routing_policy": route_policy,
         "routing_decisions": decisions,
+        "tier_distribution": tier_distribution,
+        "jev_choice_distribution": jev_choice_distribution,
+        "jev_answers": jev_answers,
+        "jev_failures": jev_failures,
         "persisted_bindings": bindings,
         "coverage": {
             key: summary_data.get(key)
@@ -358,7 +424,14 @@ def run() -> int:  # noqa: PLR0912, PLR0915
             key: usage.get(key)
             for key in ("requests", "input_tokens", "output_tokens", "total_tokens", "cost")
         },
-        "jev_path": "pass" if jev_enabled else "skip: JEV disabled; non-ZDR policy unverified",
+        "jev_path": (
+            "pass"
+            if jev_enabled
+            and any(row["reason"] == "jev" for row in decisions)
+            and jev_evidence_matches(decisions, jev_answers, jev_failures)
+            and jev_choice_evidence_matches(decisions)
+            else "fail: JEV enabled without matched evidence"
+        ),
         "overall": "pass" if passed else "fail",
     }
     evidence_path = run_dir / "routing-verification.json"

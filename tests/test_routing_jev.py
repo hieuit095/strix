@@ -63,6 +63,67 @@ async def test_jev_wire_and_result() -> None:
     assert (usage[0].requests, usage[0].total_tokens) == (1, 183)
 
 
+async def test_jev_choice_precedes_higher_probability_and_logs_safe_usage(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("INFO")
+    payload = copy.deepcopy(VALID)
+    payload["answers"]["route_tier"]["choice"] = "worker"
+    requests: list[httpx.Request] = []
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: requests.append(request) or httpx.Response(200, json=payload)
+        )
+    ) as client:
+        adapter = JevClient(
+            client,
+            base_url="https://example.test/v1",
+            api_key="KEY_SECRET_51",
+            timeout_s=5,
+            on_usage=lambda _usage: None,
+        )
+        router = HybridModelRouter(
+            adapter, BudgetGovernor(1, 1), specialist_threshold=0.65, expert_threshold=0.65
+        )
+        decision = await router.route(Envelope("TASK_SECRET_27", ("business_logic",)))
+
+    assert decision.tier is Tier.WORKER
+    assert decision.reason == "jev"
+    assert len(requests) == 1
+    assert "choice=worker input_tokens=180 output_tokens=3" in caplog.text
+    assert "KEY_SECRET_51" not in caplog.text
+    assert "TASK_SECRET_27" not in caplog.text
+
+
+async def test_jev_choice_cannot_bypass_specialist_threshold() -> None:
+    payload = copy.deepcopy(VALID)
+    payload["answers"]["route_tier"]["probabilities"] = {
+        "worker": 0.351,
+        "specialist": 0.649,
+        "expert": 0.0,
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
+    ) as client:
+        adapter = JevClient(
+            client,
+            base_url="https://example.test/v1",
+            api_key="dummy",
+            timeout_s=5,
+            on_usage=lambda _usage: None,
+        )
+        router = HybridModelRouter(
+            adapter, BudgetGovernor(1, 1), specialist_threshold=0.65, expert_threshold=0.65
+        )
+        decision = await router.route(Envelope("synthetic", ("business_logic",)))
+    assert (decision.tier, decision.reason, decision.jev_choice) == (
+        Tier.WORKER,
+        "jev",
+        "specialist",
+    )
+
+
 async def test_allowlist_excludes_raw_task_and_custom_skills() -> None:
     requests: list[httpx.Request] = []
 

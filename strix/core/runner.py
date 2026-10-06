@@ -617,10 +617,11 @@ async def run_strix_scan(
                     "api_type": settings.llm.api_type,
                 }
                 logger.info(
-                    "child routing tier=%s model=%s reason=%s",
+                    "child routing tier=%s model=%s reason=%s jev_choice=%s",
                     decision.tier.name.lower(),
                     child_config.model,
                     decision.reason,
+                    decision.jev_choice or "none",
                 )
             return await start_child_agent(
                 coordinator=coordinator,

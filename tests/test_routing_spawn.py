@@ -247,6 +247,7 @@ def mock_jev_http(
         payload = copy.deepcopy(VALID)
         if probs is not None:
             payload["answers"]["route_tier"]["probabilities"] = probs
+            payload["answers"]["route_tier"]["choice"] = max(probs, key=probs.get)
         if state is not None:
             state.cost = cost
         return httpx.Response(200, json=payload)

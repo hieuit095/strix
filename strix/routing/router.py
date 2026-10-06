@@ -38,12 +38,24 @@ class HybridModelRouter:
         self._expert_threshold = expert_threshold
         self._available = available
 
-    def _pick(self, probs: dict[str, float]) -> Tier:
-        if probs.get("expert", 0.0) >= self._expert_threshold:
-            return Tier.EXPERT
-        if probs.get("specialist", 0.0) >= self._specialist_threshold:
-            return Tier.SPECIALIST
-        return Tier.WORKER
+    def _pick(self, probs: dict[str, float], choice: str | None) -> Tier:
+        target = Tier.WORKER
+        if choice is None:
+            ceiling = Tier.EXPERT
+        else:
+            ceiling = {
+                "worker": Tier.WORKER,
+                "specialist": Tier.SPECIALIST,
+                "expert": Tier.EXPERT,
+            }.get(choice, Tier.WORKER)
+        if ceiling >= Tier.EXPERT and probs.get("expert", 0.0) >= self._expert_threshold:
+            target = Tier.EXPERT
+        elif (
+            ceiling >= Tier.SPECIALIST
+            and probs.get("specialist", 0.0) >= self._specialist_threshold
+        ):
+            target = Tier.SPECIALIST
+        return target
 
     async def route(self, envelope: Envelope) -> RouteDecision:
         rules = apply_hard_rules(envelope)
@@ -55,13 +67,15 @@ class HybridModelRouter:
                 self._governor.admit(rules.floor, floor=rules.floor, available=allowed), "rule"
             )
         reason = "jev"
+        choice: str | None = None
         try:
             result = await self._client.decide(envelope, "route_tier")
-            wanted = self._pick(result.probabilities)
+            choice = result.choice
+            wanted = self._pick(result.probabilities, result.choice)
         except (TimeoutError, ValueError, RuntimeError, httpx.HTTPError) as exc:
             logger.warning("JEV routing failed (%s); using the rule floor", type(exc).__name__)
             wanted, reason = rules.floor, "jev_error"
         wanted = min_tier(max_tier(wanted, rules.floor), rules.ceiling)
         wanted = max(t for t in allowed if t <= wanted)
         final = self._governor.admit(wanted, floor=rules.floor, available=allowed)
-        return RouteDecision(final, "governor" if final != wanted else reason)
+        return RouteDecision(final, "governor" if final != wanted else reason, choice)

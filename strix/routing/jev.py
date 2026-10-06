@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 from typing import TYPE_CHECKING, Any, cast
 
@@ -16,6 +17,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     import httpx
+
+
+logger = logging.getLogger(__name__)
 
 
 _QUESTION: dict[str, Any] = {
@@ -117,7 +121,13 @@ class JevClient:
         probabilities = {label: _probability(value) for label, value in raw_probabilities.items()}
         if abs(sum(probabilities.values()) - 1.0) > 0.01:
             raise ValueError("invalid JEV probability sum")
-        return DecisionResult(probabilities, input_tokens, output_tokens)
+        logger.info(
+            "JEV routing answer choice=%s input_tokens=%d output_tokens=%d",
+            choice,
+            input_tokens,
+            output_tokens,
+        )
+        return DecisionResult(probabilities, input_tokens, output_tokens, choice)
 
 
 def _object(value: object) -> dict[str, Any]:

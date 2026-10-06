@@ -33,6 +33,7 @@ class Envelope:
 class RouteDecision:
     tier: Tier
     reason: str  # "rule" | "jev" | "jev_error" | "governor"
+    jev_choice: str | None = None
 
 
 @dataclass(frozen=True)
@@ -40,3 +41,4 @@ class DecisionResult:
     probabilities: dict[str, float]
     input_tokens: int
     output_tokens: int
+    choice: str | None = None
