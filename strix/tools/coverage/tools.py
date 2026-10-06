@@ -23,7 +23,7 @@ import threading
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from agents import RunContextWrapper, function_tool
 
@@ -50,7 +50,8 @@ _OUTCOMES_REQUIRING_EVIDENCE = frozenset({"ruled_out", "not_applicable", "needs_
 
 def _caller_identity(ctx: RunContextWrapper) -> tuple[str | None, str | None]:
     """Return the (agent_id, agent_name) of the agent invoking this tool."""
-    inner = ctx.context if isinstance(ctx.context, dict) else {}
+    context: Any = ctx.context
+    inner = cast("dict[str, Any]", context) if isinstance(context, dict) else {}
     raw_agent_id = inner.get("agent_id")
     agent_id = raw_agent_id if isinstance(raw_agent_id, str) else None
     agent_name: str | None = None
@@ -58,7 +59,7 @@ def _caller_identity(ctx: RunContextWrapper) -> tuple[str | None, str | None]:
     if agent_id is not None and coordinator is not None:
         names = getattr(coordinator, "names", {})
         if isinstance(names, dict):
-            raw_agent_name = names.get(agent_id)
+            raw_agent_name = cast("dict[str, Any]", names).get(agent_id)
             agent_name = raw_agent_name if isinstance(raw_agent_name, str) else None
     return agent_id, agent_name
 
@@ -89,11 +90,12 @@ def hydrate_coverage_from_disk(state_dir: Path) -> None:
             return
         if not isinstance(data, dict):
             return
+        data = cast("dict[str, Any]", data)
         _coverage_storage.update(
             {
-                eid: entry
+                eid: cast("dict[str, Any]", entry)
                 for eid, entry in data.items()
-                if isinstance(eid, str) and isinstance(entry, dict)
+                if isinstance(entry, dict)
             }
         )
         logger.info(
@@ -360,7 +362,10 @@ def _list_impl(
             listing["agent_name"] = agent_name
         history = entry.get("history")
         if isinstance(history, list) and history:
-            listing["previous_outcomes"] = [str(h.get("outcome", "")) for h in history]
+            previous_history: list[Any] = cast("Any", history)
+            listing["previous_outcomes"] = [
+                str(cast("dict[str, Any]", item).get("outcome", "")) for item in previous_history
+            ]
         if caller_agent_id is not None and entry.get("agent_id") == caller_agent_id:
             listing["by_you"] = True
         entries.append(listing)
