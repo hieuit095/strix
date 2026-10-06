@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from agents.usage import Usage, deserialize_usage, serialize_usage
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -79,7 +79,7 @@ class LLMUsageLedger:
     def record_observed_cost(self, cost: float) -> None:
         if self.zero_cost:
             return
-        if isinstance(cost, int | float) and cost > 0:
+        if cost > 0:
             self._observed_cost += float(cost)
             self._has_observed_cost = True
 
@@ -121,6 +121,7 @@ class LLMUsageLedger:
         record["cost"] = self.total_cost
         record["providers"] = {name: tally.model_dump() for name, tally in self._providers.items()}
         record["agents"] = []
+        agent_records = cast("list[dict[str, Any]]", record["agents"])
 
         agent_tokens = {aid: _resolve_total_tokens(u) for aid, u in self._agent_usage.items()}
         total_tokens = sum(agent_tokens.values())
@@ -140,7 +141,7 @@ class LLMUsageLedger:
                     "cost": _round_cost(agent_cost),
                 }
             )
-            record["agents"].append(agent_record)
+            agent_records.append(agent_record)
 
         return record
 
@@ -155,6 +156,7 @@ class LLMUsageLedger:
 
         if not isinstance(raw_usage, dict):
             return
+        raw_usage = cast("dict[str, Any]", raw_usage)
 
         try:
             self._providers = _PROVIDER_USAGE.validate_python(raw_usage.get("providers") or {})
@@ -171,9 +173,11 @@ class LLMUsageLedger:
         self._observed_cost = persisted_cost
         self._estimated_cost = persisted_cost
 
-        for raw_agent in raw_usage.get("agents") or []:
+        raw_agents = cast("list[object]", raw_usage.get("agents") or [])
+        for raw_agent in raw_agents:
             if not isinstance(raw_agent, dict):
                 continue
+            raw_agent = cast("dict[str, Any]", raw_agent)
             agent_id = str(raw_agent.get("agent_id") or "").strip()
             if not agent_id:
                 continue
@@ -292,7 +296,7 @@ def _details_to_dict(details: Any) -> dict[str, Any]:
     if details is None:
         return {}
     if isinstance(details, list):
-        for item in details:
+        for item in cast("list[object]", details):
             result = _details_to_dict(item)
             if result:
                 return result
@@ -301,7 +305,8 @@ def _details_to_dict(details: Any) -> dict[str, Any]:
         return _details_to_dict(details.model_dump())
     if not isinstance(details, dict):
         return {}
-    return {str(k): v for k, v in details.items() if v is not None}
+    details_data = cast("dict[str, Any]", details)
+    return {str(key): value for key, value in details_data.items() if value is not None}
 
 
 def _int_or_zero(value: Any) -> int:
