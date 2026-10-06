@@ -10,7 +10,7 @@ import threading
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from agents import RunContextWrapper, function_tool
 
@@ -31,7 +31,8 @@ _notes_path: Path | None = None
 
 def _caller_identity(ctx: RunContextWrapper) -> tuple[str | None, str | None]:
     """Return the (agent_id, agent_name) of the agent invoking this tool."""
-    inner = ctx.context if isinstance(ctx.context, dict) else {}
+    context: Any = ctx.context
+    inner = cast("dict[str, Any]", context) if isinstance(context, dict) else {}
     raw_agent_id = inner.get("agent_id")
     agent_id = raw_agent_id if isinstance(raw_agent_id, str) else None
     agent_name: str | None = None
@@ -39,7 +40,7 @@ def _caller_identity(ctx: RunContextWrapper) -> tuple[str | None, str | None]:
     if agent_id is not None and coordinator is not None:
         names = getattr(coordinator, "names", {})
         if isinstance(names, dict):
-            raw_agent_name = names.get(agent_id)
+            raw_agent_name = cast("dict[str, Any]", names).get(agent_id)
             agent_name = raw_agent_name if isinstance(raw_agent_name, str) else None
     return agent_id, agent_name
 
@@ -69,11 +70,12 @@ def hydrate_notes_from_disk(state_dir: Path) -> None:
             return
         if not isinstance(data, dict):
             return
+        data = cast("dict[str, Any]", data)
         _notes_storage.update(
             {
-                nid: note
+                nid: cast("dict[str, Any]", note)
                 for nid, note in data.items()
-                if isinstance(nid, str) and isinstance(note, dict)
+                if isinstance(note, dict)
             }
         )
         logger.info(
