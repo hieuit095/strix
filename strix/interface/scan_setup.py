@@ -176,9 +176,11 @@ def build_targets_info(args: argparse.Namespace) -> None:
     callers can surface it via ``parser.error`` (CLI) or a console panel (home
     page).
     """
-    args.targets_info = []
+    targets_info: list[dict[str, Any]] = []
+    args.targets_info = targets_info
     targets = list(args.target or [])
-    for target_list_path in args.target_list or []:
+    target_list_paths: list[str] = args.target_list or []
+    for target_list_path in target_list_paths:
         targets.extend(read_target_list_file(target_list_path))
 
     for target in targets:
@@ -195,14 +197,15 @@ def build_targets_info(args: argparse.Namespace) -> None:
         if target_type == "api_spec":
             _resolve_api_spec(target, target_dict)
 
-        args.targets_info.append(
+        targets_info.append(
             {"type": target_type, "details": target_dict, "original": display_target}
         )
 
-    args.targets_info = dedupe_local_targets(args.targets_info)
+    targets_info = dedupe_local_targets(targets_info)
+    args.targets_info = targets_info
 
-    assign_workspace_subdirs(args.targets_info)
-    rewrite_localhost_targets(args.targets_info, HOST_GATEWAY_HOSTNAME)
+    assign_workspace_subdirs(targets_info)
+    rewrite_localhost_targets(targets_info, HOST_GATEWAY_HOSTNAME)
 
 
 def _resolve_api_spec(target: str, details: dict[str, Any]) -> None:
@@ -296,16 +299,27 @@ def attach_workspace_mount(args: argparse.Namespace) -> None:
 
 def telemetry_start(args: argparse.Namespace) -> None:
     model = load_settings().llm.model
-    kwargs = {
-        "model": model,
-        "auth_mode": codex.auth_mode(model),
-        "scan_mode": args.scan_mode,
-        "is_whitebox": is_whitebox_scan(args.targets_info),
-        "interactive": not args.non_interactive,
-        "has_instructions": bool(args.instruction),
-    }
-    posthog.start(**kwargs)
-    scarf.start(**kwargs)
+    auth_mode = codex.auth_mode(model)
+    scan_mode = args.scan_mode
+    is_whitebox = is_whitebox_scan(args.targets_info)
+    interactive = not args.non_interactive
+    has_instructions = bool(args.instruction)
+    posthog.start(
+        model=model,
+        auth_mode=auth_mode,
+        scan_mode=scan_mode,
+        is_whitebox=is_whitebox,
+        interactive=interactive,
+        has_instructions=has_instructions,
+    )
+    scarf.start(
+        model=model,
+        auth_mode=auth_mode,
+        scan_mode=scan_mode,
+        is_whitebox=is_whitebox,
+        interactive=interactive,
+        has_instructions=has_instructions,
+    )
 
 
 def _persist_run_record(args: argparse.Namespace) -> None:
