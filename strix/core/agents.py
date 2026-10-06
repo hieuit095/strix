@@ -435,6 +435,20 @@ class AgentCoordinator:
         async with self._lock:
             return self.statuses.get(agent_id)
 
+    async def get_wait_state(
+        self, agent_id: str
+    ) -> tuple[Status | None, bool, bool, WaitKind | None, int]:
+        """Read the fields that determine whether a parked agent auto-resumes."""
+        async with self._lock:
+            runtime = self.runtimes.get(agent_id)
+            return (
+                self.statuses.get(agent_id),
+                agent_id in self.errors,
+                runtime.user_wake_required if runtime is not None else False,
+                self.wait_kinds.get(agent_id),
+                self.idle_resume_counts.get(agent_id, 0),
+            )
+
     def _set_status_locked(
         self, agent_id: str, status: Status | str, *, error: str | None = None
     ) -> None:

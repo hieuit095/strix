@@ -112,7 +112,7 @@ async def _compact_session(
     agent: Any, session: Session, run_config: RunConfig, *, force: bool
 ) -> bool:
     model = _run_config_model(run_config)
-    if session is None or model is None:
+    if model is None:
         return False
     return await maybe_compact(
         session,
@@ -144,7 +144,8 @@ def _is_transient_model_error(exc: BaseException) -> bool:
     if code is not None:
         import litellm
 
-        return bool(litellm._should_retry(code))
+        should_retry = cast("Any", litellm)._should_retry
+        return bool(should_retry(code))
     return isinstance(exc, APIError)
 
 
@@ -424,30 +425,25 @@ async def respawn_subagents(
     hooks: RunHooks[dict[str, Any]] | None = None,
     settings: Settings | None = None,
 ) -> None:
-    if any("routing" in md for md in coordinator.metadata.values()):
+    state = await coordinator.snapshot()
+    metadata = cast("dict[str, dict[str, Any]]", state["metadata"])
+    statuses = cast("dict[str, Status]", state["statuses"])
+    parent_of = cast("dict[str, str | None]", state["parent_of"])
+    names = cast("dict[str, str]", state["names"])
+    if any("routing" in md for md in metadata.values()):
         if settings is None or not isinstance(run_config.model, str):
             raise RuntimeError("routing bindings require settings and a worker model for resume")
-        validate_saved_bindings(coordinator.metadata, settings, worker_model=run_config.model)
-    async with coordinator._lock:
-        agents_snapshot = [
-            (aid, status, dict(coordinator.metadata.get(aid, {})))
-            for aid, status in coordinator.statuses.items()
-        ]
-        candidates: list[tuple[str, str, str | None, dict[str, Any]]] = []
-        for aid, status, md in agents_snapshot:
-            if not interactive and status not in {"running", "waiting"}:
-                continue
-            if coordinator.parent_of.get(aid) is None or aid == root_id:
-                continue
-            md["_restored_status"] = status
-            candidates.append(
-                (
-                    aid,
-                    coordinator.names.get(aid, aid),
-                    coordinator.parent_of.get(aid),
-                    md,
-                )
-            )
+        validate_saved_bindings(metadata, settings, worker_model=run_config.model)
+    candidates: list[tuple[str, str, str | None, dict[str, Any]]] = []
+    for aid, status in statuses.items():
+        if not interactive and status not in {"running", "waiting"}:
+            continue
+        parent_id = parent_of.get(aid)
+        if parent_id is None or aid == root_id:
+            continue
+        md = dict(metadata.get(aid, {}))
+        md["_restored_status"] = status
+        candidates.append((aid, names.get(aid, aid), parent_id, md))
 
     for child_id, name, parent_id, md in candidates:
         try:
@@ -670,13 +666,7 @@ async def _plain_waiting_timeout(
     agents is re-checked on a timer, and only until it has spent its idle
     budget re-parking without hearing anything.
     """
-    async with coordinator._lock:
-        status = coordinator.statuses.get(agent_id)
-        has_error = agent_id in coordinator.errors
-        runtime = coordinator.runtimes.get(agent_id)
-        gated = runtime.user_wake_required if runtime is not None else False
-        wait_kind = coordinator.wait_kinds.get(agent_id)
-        idle_resumes = coordinator.idle_resume_counts.get(agent_id, 0)
+    status, has_error, gated, wait_kind, idle_resumes = await coordinator.get_wait_state(agent_id)
     if status != "waiting" or has_error or gated:
         return None
     if wait_kind != "agents" or idle_resumes >= _MAX_IDLE_AUTO_RESUMES:
@@ -903,8 +893,7 @@ async def _run_cycle(  # noqa: PLR0912, PLR0915
 
 
 async def _agent_status(coordinator: AgentCoordinator, agent_id: str) -> Status | None:
-    async with coordinator._lock:
-        return coordinator.statuses.get(agent_id)
+    return await coordinator.get_status(agent_id)
 
 
 def _log_recovery(
@@ -1037,9 +1026,9 @@ async def _notify_parent_on_stall(
     agent_id: str,
 ) -> None:
     """Tell the parent that a child parked mid-task, so it stops waiting blindly."""
-    async with coordinator._lock:
-        parent = coordinator.parent_of.get(agent_id)
-        name = coordinator.names.get(agent_id, agent_id)
+    parents, _, names, _ = await coordinator.graph_snapshot()
+    parent = parents.get(agent_id)
+    name = names.get(agent_id, agent_id)
     if parent is None:
         return
     await coordinator.send(
@@ -1062,9 +1051,9 @@ async def notify_parent_on_terminal(
     template = _TERMINAL_NOTICE.get(status)
     if template is None:
         return
-    async with coordinator._lock:
-        parent = coordinator.parent_of.get(agent_id)
-        name = coordinator.names.get(agent_id, agent_id)
+    parents, _, names, _ = await coordinator.graph_snapshot()
+    parent = parents.get(agent_id)
+    name = names.get(agent_id, agent_id)
     if parent is None:
         return
     if not await coordinator.claim_parent_notice(agent_id):
