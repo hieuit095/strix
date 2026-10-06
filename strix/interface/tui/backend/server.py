@@ -9,7 +9,7 @@ import logging
 import struct
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from strix.interface.tui.backend.projection import sanitize_terminal_text
 from strix.interface.tui.backend.protocol import (
@@ -24,6 +24,7 @@ from strix.interface.tui.backend.protocol import (
 
 if TYPE_CHECKING:
     import socket
+    from collections.abc import Sequence
 
     from strix.interface.tui.backend.controller import TuiController
 
@@ -37,6 +38,18 @@ _COLLECTION_ITEM_LIMITS = {"events": 5_000, "vulnerabilities": 1_000}
 _COLLECTION_PAYLOAD_TARGET = MAX_COLLECTION_FRAME_BYTES - 16 * 1024
 
 
+def _new_collection_order() -> list[str]:
+    return []
+
+
+def _new_collection_items() -> dict[str, dict[str, Any]]:
+    return {}
+
+
+def _new_collection_fingerprints() -> dict[str, str]:
+    return {}
+
+
 class _MessageTooLargeError(ValueError):
     pass
 
@@ -45,9 +58,9 @@ class _MessageTooLargeError(ValueError):
 class _CollectionState:
     revision: int = 0
     bootstrapped: bool = False
-    order: list[str] = field(default_factory=list)
-    items: dict[str, dict[str, Any]] = field(default_factory=dict)
-    fingerprints: dict[str, str] = field(default_factory=dict)
+    order: list[str] = field(default_factory=_new_collection_order)
+    items: dict[str, dict[str, Any]] = field(default_factory=_new_collection_items)
+    fingerprints: dict[str, str] = field(default_factory=_new_collection_fingerprints)
     source_cursor: int | None = None
 
 
@@ -140,6 +153,7 @@ class TuiBackendServer:
         message = json.loads(raw.decode("utf-8"))
         if not isinstance(message, dict):
             raise TypeError("TUI ready message must be an object")
+        message = cast("dict[str, Any]", message)
         if message.get("version") != PROTOCOL_VERSION:
             raise ValueError(
                 f"TUI protocol mismatch: expected v{PROTOCOL_VERSION}, "
@@ -150,6 +164,7 @@ class TuiBackendServer:
         payload = message.get("payload")
         if not isinstance(payload, dict):
             raise TypeError("TUI ready payload must be an object")
+        payload = cast("dict[str, Any]", payload)
         capabilities = payload.get("capabilities")
         if capabilities != list(PROTOCOL_CAPABILITIES):
             raise ValueError("TUI protocol capability mismatch")
@@ -173,6 +188,7 @@ class TuiBackendServer:
         message = json.loads(raw.decode("utf-8"))
         if not isinstance(message, dict):
             raise TypeError("message must be an object")
+        message = cast("dict[str, Any]", message)
         request_id = message.get("request_id")
         if not isinstance(request_id, str) or not request_id:
             raise ValueError("command request_id must be a non-empty string")
@@ -184,7 +200,7 @@ class TuiBackendServer:
             raise TypeError("invalid command envelope")
         if len(command) > 128:
             raise ValueError("command name exceeds 128 characters")
-        return request_id, command, payload
+        return request_id, command, cast("dict[str, object]", payload)
 
     @staticmethod
     def _structured_error(exc: Exception) -> dict[str, object]:
@@ -208,6 +224,7 @@ class TuiBackendServer:
         try:
             preliminary = json.loads(raw.decode("utf-8"))
             if isinstance(preliminary, dict):
+                preliminary = cast("dict[str, Any]", preliminary)
                 raw_request_id = preliminary.get("request_id")
                 if isinstance(raw_request_id, str) and raw_request_id:
                     request_id = raw_request_id
@@ -273,14 +290,17 @@ class TuiBackendServer:
         if isinstance(value, str):
             return sanitize_terminal_text(value)
         if isinstance(value, dict):
+            value = cast("dict[str, Any]", value)
             return {
                 sanitize_terminal_text(str(key)): cls._sanitize_wire_value(item)
                 for key, item in value.items()
             }
         if isinstance(value, list):
-            return [cls._sanitize_wire_value(item) for item in value]
+            items = cast("Sequence[Any]", value)
+            return [cls._sanitize_wire_value(item) for item in items]
         if isinstance(value, tuple):
-            return [cls._sanitize_wire_value(item) for item in value]
+            items = cast("Sequence[Any]", value)
+            return [cls._sanitize_wire_value(item) for item in items]
         return value
 
     async def _send(self, message: dict[str, Any]) -> None:
@@ -298,7 +318,11 @@ class TuiBackendServer:
         except _MessageTooLargeError:
             request_id = response.get("request_id")
             payload = response.get("payload")
-            command = payload.get("command", "") if isinstance(payload, dict) else ""
+            command = (
+                cast("dict[str, Any]", payload).get("command", "")
+                if isinstance(payload, dict)
+                else ""
+            )
             await self._send(
                 envelope(
                     "command_result",
@@ -354,14 +378,20 @@ class TuiBackendServer:
     ) -> None:
         cursor = 0
         if not values:
-            payload = {**fixed, "cursor": 0, "next_cursor": 0, "done": True, field_name: []}
+            payload: dict[str, Any] = {
+                **fixed,
+                "cursor": 0,
+                "next_cursor": 0,
+                "done": True,
+                field_name: [],
+            }
             await self._send(envelope(message_type, payload))
             return
 
         while cursor < len(values):
             chunk: list[dict[str, Any]] = []
             next_cursor = cursor
-            empty_payload = {
+            empty_payload: dict[str, Any] = {
                 **fixed,
                 "cursor": cursor,
                 "next_cursor": cursor,
