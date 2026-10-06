@@ -96,4 +96,11 @@ Final rerun sau harness 08: `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 40s uv run
 
 Environment diagnostic riêng: config Pyright tạm dưới /tmp giữ nguyên strict settings, thêm project/site-packages paths (không sửa repo config) resolve lại imports: exit 1, 962 errors; không diagnostic ở strix/routing. So baseline diagnostic signatures, phần mới chỉ ở viewer/report_pdf.py, report/writer.py, runtime/docker_client.py/docker_connection.py, skills/__init__.py và utils/api_spec.py (dependency/stub discovery khác), không ở routing/core changes. Đây chỉ chẩn đoán môi trường, không thay required make check-all gate hoặc hạ checks. Không sửa unrelated baseline để giả acceptance.
 
+### Kết quả cập nhật 06/10/2026 — chưa đạt acceptance
+
+- Task 04 parser: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_jev.py -q` → exit **0**, 54 passed. Full suite sau harness refactor: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, 2564 passed, 13 skipped, 3 xfailed, 106 warnings; `/tmp/strix-hybrid-final-fullsuite.log`.
+- Latest committed-code `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True make check-all` → exit **2**. Ruff format/check and mypy pass; Pyright reports **784 diagnostics across 58 files**. No Pyright configuration or suppressions were changed. Required check-all remains red, so Task 07 is **not accepted**.
+- A diagnostic-only typing experiment temporarily reduced Pyright to 721 diagnostics but added out-of-scope production changes; those changes were reverted. A test command with nonexistent `tests/test_report_state.py` exited **4**; the corrected report/telemetry selection reached 201 passed tests but hung on outbound HTTP and was interrupted, so it is **not** acceptance evidence. No unrelated baseline cleanup is retained.
+- Task 07 remains an offline required-gate failure. Earlier full-suite success does not make check-all green. Do not mark this task complete until its exact gates pass.
+
 Pending commit groups khi Git writable: (1) JEV choice parser + test/Task04 record; (2) preservation tests + docs/routing + Task07 record; (3) live harness + Task08/README evidence. Không tạo commit giả ở alternate Git directory hoặc push để bypass read-only .git.
