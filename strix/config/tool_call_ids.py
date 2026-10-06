@@ -17,7 +17,7 @@ unique ones keeps the history valid for any provider.
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from agents.models.fake_id import FAKE_RESPONSES_ID
@@ -37,7 +37,7 @@ def collect_call_ids(items: list[Any]) -> set[str]:
     used: set[str] = set()
     for item in items:
         if isinstance(item, dict):
-            call_id = item.get("call_id")
+            call_id = cast("dict[str, Any]", item).get("call_id")
             if isinstance(call_id, str) and call_id:
                 used.add(call_id)
         elif isinstance(item, ResponseFunctionToolCall) and item.call_id:
@@ -61,6 +61,7 @@ def dedupe_history_call_ids(items: list[Any]) -> tuple[list[Any], bool]:
         if not isinstance(item, dict):
             rebuilt.append(item)
             continue
+        item = cast("dict[str, Any]", item)
 
         kind = item.get("type")
         if kind not in ("function_call", "function_call_output"):
@@ -105,7 +106,9 @@ class TurnCallIdRewriter:
     """
 
     def __init__(self, model_input: str | list[Any]) -> None:
-        self._used = set() if isinstance(model_input, str) else collect_call_ids(model_input)
+        self._used: set[str] = (
+            set() if isinstance(model_input, str) else collect_call_ids(model_input)
+        )
         self._remap: dict[str, str] = {}
         self._blank_remap: dict[str, str] = {}
         self._settled: set[str] = set()
