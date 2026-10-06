@@ -8,7 +8,7 @@ import logging
 import uuid
 from collections import Counter
 from datetime import UTC, datetime
-from typing import Any, Literal, get_args
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from agents import RunContextWrapper, function_tool
 
@@ -21,9 +21,13 @@ from strix.skills import validate_requested_skills
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
 
 def _ctx(ctx: RunContextWrapper) -> dict[str, Any]:
-    return ctx.context if isinstance(ctx.context, dict) else {}
+    context: Any = ctx.context
+    return cast("dict[str, Any]", context) if isinstance(context, dict) else {}
 
 
 def _filed_reports_by(agent_id: str) -> list[dict[str, Any]]:
@@ -274,8 +278,9 @@ def _session_items_payload(items: list[Any]) -> list[dict[str, Any]]:
     payload: list[dict[str, Any]] = []
     for item in items:
         if isinstance(item, dict):
-            role = item.get("role")
-            content = item.get("content")
+            item_data = cast("dict[str, Any]", item)
+            role = item_data.get("role")
+            content = item_data.get("content")
             payload.append({"role": role, "content": content})
         else:
             payload.append({"content": str(item)})
@@ -377,8 +382,7 @@ async def wait_for_agents(  # noqa: PLR0911
         )
     inner[_WAITED_TURN_KEY] = turn
 
-    async with coordinator._lock:
-        stopped = coordinator.statuses.get(me) == "stopped"
+    stopped = await coordinator.get_status(me) == "stopped"
     if stopped:
         return json.dumps(
             {
@@ -461,8 +465,7 @@ async def wait_for_agents(  # noqa: PLR0911
             default=str,
         )
 
-    async with coordinator._lock:
-        stopped = coordinator.statuses.get(me) == "stopped"
+    stopped = await coordinator.get_status(me) == "stopped"
     if stopped:
         return json.dumps(
             {
@@ -565,6 +568,10 @@ async def create_agent(
             default=str,
         )
 
+    typed_spawner = cast(
+        "Callable[..., Awaitable[dict[str, Any]]]",
+        spawner,
+    )
     skill_list = list(skills or [])
     skill_error = validate_requested_skills(skill_list)
     if skill_error:
@@ -576,7 +583,7 @@ async def create_agent(
 
     parent_history = list(ctx.turn_input) if inherit_context and ctx.turn_input else []
     try:
-        result = await spawner(
+        result = await typed_spawner(
             parent_ctx=inner,
             name=name,
             task=task,
@@ -695,8 +702,8 @@ async def agent_finish(
 
     parent_notified = False
     if report_to_parent and await coordinator.claim_parent_notice(me):
-        async with coordinator._lock:
-            agent_name = coordinator.names.get(me, me)
+        _, _, names, _ = await coordinator.graph_snapshot()
+        agent_name = names.get(me) or me
         report = _render_completion_report(
             agent_name=agent_name,
             agent_id=me,
@@ -832,8 +839,8 @@ async def stop_agent(
         stopped = [target_agent_id]
 
     # The stopper knows what it just did; anyone else waiting on those agents does not.
-    async with coordinator._lock:
-        orphaned = [aid for aid in stopped if coordinator.parent_of.get(aid) not in (None, me)]
+    parent_of, _, _, _ = await coordinator.graph_snapshot()
+    orphaned = [aid for aid in stopped if parent_of.get(aid) not in (None, me)]
     for aid in orphaned:
         await notify_parent_on_terminal(coordinator, aid, "stopped")
 
