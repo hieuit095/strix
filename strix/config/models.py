@@ -9,7 +9,7 @@ import logging
 import os
 import time
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable
 from typing import TYPE_CHECKING, Any, cast
 
 from agents import (
@@ -106,6 +106,7 @@ class _CodexResponsesModel(OpenAIResponsesModel):
                     effort = "high"
                 case _:
                     pass
+            effort = cast("ReasoningEffort", effort)
             overrides = overrides.resolve(ModelSettings(reasoning=Reasoning(effort=effort)))
         return model_settings.resolve(overrides)
 
@@ -156,7 +157,7 @@ class _CodexResponsesModel(OpenAIResponsesModel):
         aclose = getattr(events, "aclose", None)
         if callable(aclose):
             with contextlib.suppress(Exception):
-                await aclose()
+                await cast("Awaitable[Any]", aclose())
             return
         close = getattr(events, "close", None)
         if callable(close):
@@ -680,7 +681,11 @@ def resolve_api_type(model_name: str, settings: Settings) -> ApiType:
 def _catalog_supported_endpoints(model_name: str) -> list[str]:
     entry = _catalog_entry(model_name)
     endpoints = entry.get("supported_endpoints") if entry else None
-    return [str(e) for e in endpoints] if isinstance(endpoints, list) else []
+    return (
+        [str(endpoint) for endpoint in cast("list[object]", endpoints)]
+        if isinstance(endpoints, list)
+        else []
+    )
 
 
 def _mirror_api_key_to_provider_env(model_name: str | None, api_key: str) -> None:
@@ -694,10 +699,12 @@ def _mirror_api_key_to_provider_env(model_name: str | None, api_key: str) -> Non
             name = name[len(prefix) :]
             break
     try:
-        report = litellm.validate_environment(model=name.lower())
+        validate_environment: Any = vars(litellm)["validate_environment"]
+        report: Any = validate_environment(model=name.lower())
     except Exception:  # noqa: BLE001
         return
-    for env_key in report.get("missing_keys") or []:
+    report_data = cast("dict[str, Any]", report)
+    for env_key in cast("list[str]", report_data.get("missing_keys") or []):
         if env_key.endswith("_API_KEY"):
             os.environ.setdefault(env_key, api_key)
 
@@ -745,7 +752,8 @@ def _install_openrouter_stream_cost_capture() -> None:
 
     class _StrixOpenRouterStreamingHandler(OpenRouterChatCompletionStreamingHandler):
         def chunk_parser(self, chunk: dict[str, Any]) -> Any:
-            stream = super().chunk_parser(chunk)
+            parser = cast("Any", super()).chunk_parser
+            stream: Any = parser(chunk)
             usage = chunk.get("usage")
             response_id = chunk.get("id") or getattr(stream, "id", None)
             streamed_openrouter_costs.remember(response_id, usage)
@@ -765,7 +773,8 @@ def _install_openrouter_stream_cost_capture() -> None:
 
         def transform_response(self, *args: Any, **kwargs: Any) -> Any:
             # Non-streamed replies (LLM_DISABLE_STREAMING) skip the chunk parser.
-            response = super().transform_response(*args, **kwargs)
+            transform = cast("Any", super()).transform_response
+            response: Any = transform(*args, **kwargs)
             raw_response = kwargs.get("raw_response", args[1] if len(args) > 1 else None)
             with contextlib.suppress(Exception):
                 body = raw_response.json()  # type: ignore[union-attr]
@@ -776,7 +785,8 @@ def _install_openrouter_stream_cost_capture() -> None:
         def transform_request(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
             # Pin each agent's calls to one upstream provider so its prompt cache
             # survives between turns.
-            body = super().transform_request(*args, **kwargs)
+            transform = cast("Any", super()).transform_request
+            body = cast("dict[str, Any]", transform(*args, **kwargs))
             agent_id = request_log.current_call_context().agent_id
             if agent_id and load_settings().llm.openrouter_sticky_sessions:
                 session_id = _OPENROUTER_SESSION_IDS.setdefault(agent_id, str(uuid.uuid4()))
@@ -803,8 +813,8 @@ def is_openrouter_model(model_name: str | None) -> bool:
 def _configure_openrouter_attribution(model_name: str | None) -> None:
     import litellm
 
-    current: object = litellm.headers
-    existing: dict[str, str] = current if isinstance(current, dict) else {}
+    current: Any = litellm.headers
+    existing = cast("dict[str, str]", current) if isinstance(current, dict) else {}
     if not is_openrouter_model(model_name):
         if any(key in existing for key in OPENROUTER_ATTRIBUTION_HEADERS):
             remaining = {
@@ -836,8 +846,8 @@ def _configure_extra_headers(llm: LlmSettings) -> None:
 def _merge_litellm_headers(headers: dict[str, str]) -> None:
     import litellm
 
-    current: object = litellm.headers
-    existing: dict[str, str] = current if isinstance(current, dict) else {}
+    current: Any = litellm.headers
+    existing = cast("dict[str, str]", current) if isinstance(current, dict) else {}
     litellm.headers = {**existing, **headers}  # type: ignore[assignment]
 
 
@@ -866,9 +876,10 @@ def _register_litellm_cost_callback() -> None:
         bucket = getattr(litellm, bucket_name, None)
         if not isinstance(bucket, list):
             continue
-        if litellm_cost_callback in bucket:
+        bucket_items = cast("list[object]", bucket)
+        if litellm_cost_callback in bucket_items:
             continue
-        bucket.append(litellm_cost_callback)
+        bucket_items.append(litellm_cost_callback)
 
 
 def _configure_litellm_default(name: str, value: str) -> None:
@@ -918,9 +929,11 @@ def _catalog_entry(model_name: str) -> dict[str, Any] | None:
     import litellm
 
     name = _bare_openai_name(model_name)
-    entry = litellm.model_cost.get(name)
+    raw_model_cost: Any = vars(litellm)["model_cost"]
+    model_cost = cast("dict[str, dict[str, Any]]", raw_model_cost)
+    entry = model_cost.get(name)
     if entry is None and "/" in name:
-        entry = litellm.model_cost.get(name.rsplit("/", 1)[1])
+        entry = model_cost.get(name.rsplit("/", 1)[1])
     return entry if isinstance(entry, dict) else None
 
 
@@ -930,7 +943,9 @@ def is_known_openai_bare_model(model_name: str) -> bool:
     name = model_name.strip().lower()
     if not name or "/" in name:
         return False
-    entry = litellm.model_cost.get(name)
+    raw_model_cost: Any = vars(litellm)["model_cost"]
+    model_cost = cast("dict[str, dict[str, Any]]", raw_model_cost)
+    entry = model_cost.get(name)
     return bool(entry and entry.get("litellm_provider") == "openai")
 
 
@@ -989,7 +1004,9 @@ def bedrock_route_supports_prompt_caching(model_name: str) -> bool:
             with contextlib.suppress(Exception):
                 if checker(cand):
                     return True
-        entry = litellm.model_cost.get(cand)
+        raw_model_cost: Any = vars(litellm)["model_cost"]
+        model_cost = cast("dict[str, dict[str, Any]]", raw_model_cost)
+        entry = model_cost.get(cand)
         if entry and entry.get("supports_prompt_caching"):
             return True
     return False
