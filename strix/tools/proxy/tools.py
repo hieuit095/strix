@@ -10,7 +10,7 @@ import logging
 import re
 from dataclasses import is_dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from agents import RunContextWrapper, function_tool
 
@@ -51,7 +51,10 @@ _CAIDO_CALL_LOCK = asyncio.Lock()
 
 
 async def _ctx_client(ctx: RunContextWrapper) -> Client | None:
-    inner: dict[str, Any] = ctx.context if isinstance(ctx.context, dict) else {}
+    context = cast("Any", ctx).context
+    inner: dict[str, Any] = {}
+    if isinstance(context, dict):
+        inner = cast("dict[str, Any]", context)
     client: Client | CaidoBootstrapHandle | None = inner.get("caido_client")
     if isinstance(client, CaidoBootstrapHandle):
         try:
@@ -105,13 +108,17 @@ def _to_tool_json(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat()
     if is_dataclass(value) and not isinstance(value, type):
-        return {k: _to_tool_json(v) for k, v in dataclasses.asdict(value).items()}
+        fields: dict[str, Any] = dataclasses.asdict(value)
+        return {key: _to_tool_json(item) for key, item in fields.items()}
     if hasattr(value, "model_dump"):
-        return _to_tool_json(value.model_dump())
+        model = cast("Any", value)
+        return _to_tool_json(model.model_dump())
     if isinstance(value, dict):
-        return {str(k): _to_tool_json(v) for k, v in value.items()}
+        mapping = cast("Any", value)
+        return {str(key): _to_tool_json(item) for key, item in mapping.items()}
     if isinstance(value, list | tuple | set):
-        return [_to_tool_json(v) for v in value]
+        sequence = cast("Any", value)
+        return [_to_tool_json(item) for item in sequence]
     return str(value)
 
 
@@ -212,7 +219,7 @@ async def list_requests(
             ),
         )
 
-        entries = []
+        entries: list[dict[str, Any]] = []
         for edge in connection.edges:
             req = edge.node.request
             resp = edge.node.response
@@ -354,7 +361,7 @@ def _format_search_hits(content: str, pattern: str) -> dict[str, Any]:
     except re.error as exc:
         return {"success": False, "error": f"Invalid regex: {exc}"}
 
-    hits = []
+    hits: list[dict[str, Any]] = []
     for match in regex.finditer(content):
         start, end = match.span()
         before = content[max(0, start - 40) : start]
