@@ -501,7 +501,9 @@ def _spend_request_records(stdout: str) -> list[dict[str, Any]]:
     """Parse spend-request records from JSON or JSON-lines wallet output."""
     records: list[dict[str, Any]] = []
     for candidate in _embedded_json_documents((stdout or "").strip()):
-        items = candidate if isinstance(candidate, list) else [candidate]
+        items: list[object] = (
+            cast("list[object]", candidate) if isinstance(candidate, list) else [candidate]
+        )
         for item in items:
             if not isinstance(item, dict):
                 continue
@@ -609,12 +611,16 @@ def _link_wallet_authenticated(npx: str) -> bool:
     except (OSError, subprocess.SubprocessError):
         return False
     try:
-        payload = json.loads(result.stdout or "null")
+        payload: object = json.loads(result.stdout or "null")
     except (TypeError, ValueError):
         return False
     if isinstance(payload, list):
-        payload = payload[0] if payload else None
-    return bool(isinstance(payload, dict) and payload.get("authenticated"))
+        payload_values = cast("list[object]", payload)
+        payload = payload_values[0] if payload_values else None
+    if not isinstance(payload, dict):
+        return False
+    payload_fields = cast("dict[str, Any]", payload)
+    return bool(payload_fields.get("authenticated"))
 
 
 def _prepare_link_wallet(console: Console, npx: str, *, as_json: bool) -> str | None:
