@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from agents.models.interface import ModelTracing
 from openai.types.responses import ResponseOutputMessage
@@ -148,7 +148,7 @@ def _prepare_report_for_comparison(report: dict[str, Any]) -> dict[str, Any]:
         "dependency_metadata",
     ]
 
-    cleaned = {}
+    cleaned: dict[str, Any] = {}
     for field in relevant_fields:
         if report.get(field):
             value = report[field]
@@ -163,6 +163,7 @@ def _dependency_identity(report: dict[str, Any]) -> tuple[str, str, str] | None:
     metadata = report.get("dependency_metadata")
     if not isinstance(metadata, dict):
         return None
+    metadata = cast("dict[str, Any]", metadata)
 
     raw_cve = report.get("cve")
     raw_package = metadata.get("package_name")
@@ -181,6 +182,7 @@ def _manifest_path(report: dict[str, Any]) -> str:
     metadata = report.get("dependency_metadata")
     if not isinstance(metadata, dict):
         return ""
+    metadata = cast("dict[str, Any]", metadata)
     return str(metadata.get("manifest_path") or "").strip()
 
 
