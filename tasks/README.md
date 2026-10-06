@@ -54,7 +54,7 @@ Báo cáo cuối phải phân biệt: `offline verified`, `live verified`, `bloc
 | 00 | Hoàn tất baseline | 2355 passed/3 existing xfailed; quality baseline 910 Pyright errors |
 | 01–06 | Implementation, targeted regressions, full suite, and final quality gate pass | Task records; current-source `make check-all` and full suite recheck in Task 07 |
 | 07 | Offline acceptance passed; live verification handed to Task 08 | Current-source run: 2565 passed/13 skipped/3 xfailed; `make check-all` exits 0 (Ruff, Mypy, Pyright, Bandit) |
-| 08 | JEV-enabled quick scan completed, but scan-level JEV assertion failed; rollout incomplete | See dated Task 08 addendum and `docs/routing/verification.md`; live JEV adapter/router probes separately passed for Worker and Specialist |
+| 08 | JEV-participating quick scan passed; overall quality/rollout gates incomplete | See latest Task 08 addendum and `docs/routing/verification.md`; scan JSON `host-docker-internal-5173_9145` has `overall=pass`, 4 matched live JEV choices, and 6/6 bindings |
 
 ### Tình trạng mới nhất sau continuation — 06/10/2026
 
@@ -66,3 +66,8 @@ Không tuyên bố toàn plan complete. Branch — `feat/hybrid-router`; Task 07
 ### Cập nhật JEV-centric — 06/10/2026 19:09 ICT
 
 Task 07 JEV precedence/fallback tests and full repository gates passed (details in Task 07 record). Owner-provided non-ZDR probe and two additional real JEV route calls prove the enabled endpoint path and Worker/Specialist mapping. The bounded scan completed with JEV enabled but emitted six rule-floor Worker decisions and no JEV call; the verifier correctly exits 1 for the scan-level JEV assertion. Task 08 remains incomplete for that scan gate, live Expert/GPT entitlement, quality/ground-truth/PoC parity, routed resume, and actual billing. Do not mark plan §7 rollout complete.
+
+
+### Final root-cause correction — 2026-10-06 21:02 ICT
+
+The previous scan-level JEV failure was fixed: real Strix skill IDs were path-qualified, while policy and JEV allowlist only recognized bare labels. New regression coverage proves qualified IDOR/business-logic/BFLA skills open JEV and its choice enters the logged model binding. The completed QUICK scan `host-docker-internal-5173_9145` passed the verifier: 4 scan JEV answers, 4 `reason=jev` choices, 6/6 route-binding matches, Worker 3/Specialist 3. Task 08 remains incomplete for live Expert/GPT, quality/ground-truth/PoC parity, live resume and actual billing.

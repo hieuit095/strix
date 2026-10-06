@@ -221,3 +221,25 @@ Bounded QUICK scan thật với `STRIX_ROUTING_JEV_ENABLED=true`, routing enable
 - **INCOMPLETE:** routing-off vs floor-only vs JEV-on quality/coverage comparison cùng scope; ground-truth và PoC review; routed-child resume live; dashboard/actual-charge reconciliation; live Expert contract/entitlement. Không tick Definition of Done của rollout.
 
 Lệnh quick scan, status per assertion và counts đầy đủ ở [`docs/routing/verification.md`](../docs/routing/verification.md). Artifact JSON đầy đủ nằm trong ignored `strix_runs/host-docker-internal-5173_5b0b/routing-verification.json`; giữ nguyên vì nó thể hiện rõ failure JEV thật. Target owner ban đầu không bị sửa; dùng snapshot cô lập.
+
+
+## Root-cause correction and completed JEV-participating scan — 2026-10-06 21:02 ICT
+
+The previous JEV-enabled run's failure was a real routing integration defect, not a policy rejection or provider failure. In `host-docker-internal-5173_5b0b/strix.log`, all six child creation records (lines 64, 741, 756, 1918, 2212, 2622) were Worker/`reason=rule`/`jev_choice=none`, and its verifier JSON had empty JEV answers/choices/failures. That scan's stored authorization child carried `vulnerabilities/idor`, `vulnerabilities/broken_function_level_authorization`, and `vulnerabilities/business_logic`; the old policy lowercased those full names then intersected with bare labels, leaving `ask_jev=False`. `spawn_child_agent` passed `kwargs["skills"]` unchanged from runner.py:606. The adapter's allowlist used the same incorrect exact-label comparison, so qualified labels would also have been omitted from JEV state.
+
+The fix canonicalizes a skill declaration to its final path component once through `normalized_skill_labels`, shared by hard-rule matching and JEV allowlist generation. It does not broaden the allowlist beyond the existing `HIGH_IMPACT | AMBIGUOUS` sets or change floor, threshold, cap, cancellation, or model availability rules. RED/GREEN evidence is recorded in Task 01/04/05 and Task 07.
+
+### Real scan results
+
+- Exact reproduction command and completed secret-free evidence are in [docs/routing/verification.md](../docs/routing/verification.md). Scan run: `host-docker-internal-5173_9145`; verifier exit **0**, offline assertions **90 passed**, target probe HTTP **200**; underlying Strix scan exit **2** (a report was filed), `run.json.status=completed`; `routing-verification.json.overall=pass`, `jev_path=pass`.
+- Actual scan log contains **4** `JEV routing answer` entries, all `choice=specialist`, with input/output usage **414/42, 416/42, 413/42, 416/42**. The child routing log contains **6** decisions and all **6/6** match persisted tier/model bindings: **3 Worker/DeepSeek**, **3 Specialist/MiMo**. Four decisions are `reason=jev` with `jev_choice=specialist`; three bind Specialist to `openai/xiaomi/mimo-v2.6-pro`, while one remains Worker/DeepSeek because specialist probability is below threshold 0.65. Two closed rule-floor Worker decisions correctly have no JEV choice. No live JEV failure occurred.
+- No Expert route occurred. All four JEV answers selected Specialist, which cannot select Expert under the choice ceiling. Expert/GPT contract/entitlement therefore remains unverified (prior gateway response was HTTP 403 `MODEL_NOT_IN_PLAN`).
+- Usage: **205 requests**, 21,626,792 input + 255,031 output = 21,881,823 tokens, estimated USD **0.7686115896** (not billed-charge evidence), max budget USD 5. Coverage: **60 surfaces**, **32 gaps**, **1 report filed**; outcome counts: reported 2, no-issue-found 16, ruled-out 10, not-applicable 1, needs-follow-up 31. The scan is complete but does not establish ground-truth/PoC parity or a clean result.
+- Target was the authorized isolated snapshot and remained read-only; source HEAD `6c0fc01e7f969bbf75ef663606aa4a4d7c747620`, branch `main`, pre-existing untracked `scripts/optimize_system.sh` only. Vite was stopped (Ctrl-C exit **130**); isolated Supabase start/stop exited **0**.
+
+### Gate status
+
+- **PASS:** scan invokes live JEV in the actual child spawn path; exact JEV System One model/question; four answer/usage records match four `reason=jev` decisions; all six route logs match persisted configured model bindings; offline regression and repository checks pass.
+- **PASS:** real scan displays JEV-driven Specialist routing to MiMo, plus a below-threshold JEV Specialist choice constrained to Worker/DeepSeek.
+- **NOT OBSERVED:** JEV `expert` choice and live GPT child; this scan's four answers were all Specialist.
+- **INCOMPLETE:** routing-off/floor-only/JEV-on parity, independent ground-truth and PoC review, live routed-child resume, and account charge reconciliation. Do not mark the overall live rollout DoD complete.

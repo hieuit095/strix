@@ -213,3 +213,11 @@ Environment diagnostic riêng: config Pyright tạm dưới /tmp giữ nguyên s
 - `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_*.py -q` → exit **0**, **246 passed, 13 skipped**. `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0** (Ruff, mypy, Pyright, Bandit).
 - Full suite after the routing behavior changes: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, **2584 passed, 13 skipped, 3 xfailed, 106 warnings**.
 - Current implementation logs JEV choice/usage without task/state/body/secrets; worker/specialist/expert configured mapping and precedence are deterministic-tested. Live quick scan and direct JEV probe outcomes are separately recorded in Task 08 and `docs/routing/verification.md`; live scan did not itself invoke JEV.
+
+
+### Final scan-path regression gates — 2026-10-06 21:02 ICT
+
+- `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_policy.py::test_namespaced_skill_labels_open_the_jev_choice tests/test_routing_spawn.py::test_namespaced_scan_skill_reaches_jev_and_logs_bound_choice tests/test_routing_spawn.py::test_namespaced_open_choice_logs_jev_error_only_after_http_failure -q`: RED exit **1** (five expected failures), then GREEN exit **0** (**5 passed**). An intermediate green attempt had a test logging-capture configuration failure; this was fixed in the test and the same node command then passed.
+- `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_*.py -q` → exit **0**, **251 passed, 13 skipped**.
+- `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, **2589 passed, 13 skipped, 3 xfailed, 106 warnings**.
+- `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0** (Ruff, mypy, Pyright, Bandit).

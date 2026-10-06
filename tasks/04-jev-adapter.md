@@ -126,3 +126,8 @@ Implementation verified, check-all baseline chưa đạt.
 - Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
 - Final full suite: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, 2565 passed, 13 skipped, 3 xfailed.
 - Final required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0**; Ruff, Mypy (141 files), Pyright, and Bandit passed. Task 04 acceptance is complete; live JEV service and policy remain Task 08 gates.
+
+
+### Namespace-aware allowlist follow-up — 2026-10-06 21:02 ICT
+
+Actual scan declarations use IDs such as `vulnerabilities/business_logic`; before this correction the adapter's bare-label allowlist discarded them. The adapter now shares policy's canonical skill-label normalizer and still sends only the intersection with `HIGH_IMPACT | AMBIGUOUS`. Runner-level mocked-transport regression asserts the wire model `typesafe/jev`, question `route_tier`, and state label `idor`; no task, URL, or secret was added to JEV state. Test-first RED/GREEN command and exits are recorded in Task 01 and [verification.md](../docs/routing/verification.md).

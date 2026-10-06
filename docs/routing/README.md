@@ -1,6 +1,6 @@
 # Child model routing qua CommandCode
 
-Trạng thái cập nhật 06/10/2026 19:09 ICT: offline router/governor được kiểm thử; JEV đã được gọi live qua `typesafe/jev` và chọn Worker/DeepSeek cùng Specialist/MiMo. Quick scan thật hoàn tất nhưng sáu child đều ở rule floor nên scan-level JEV chưa được chứng minh; live Expert, parity, PoC và billing vẫn chưa xác minh. Router chọn model child một lần tại spawn. Root giữ model resolved, kể cả override từ CLI. Tools, prompts, skills, scan modes, context/history, max turns và budget policy giữ nguyên.
+Trạng thái cập nhật 06/10/2026 21:02 ICT: regression offline và scan QUICK thật đã chứng minh JEV tham gia luồng spawn — bốn JEV answers khớp bốn `reason=jev`, sáu child route/model bindings khớp. JEV chọn Specialist/MiMo ba lần và một Specialist choice ở dưới threshold giữ Worker/DeepSeek. Live Expert/GPT, parity, PoC, routed resume và billing vẫn chưa xác minh. Router chọn model child một lần tại spawn. Root giữ model resolved, kể cả override từ CLI. Tools, prompts, skills, scan modes, context/history, max turns và budget policy giữ nguyên.
 
 ## Cấu hình
 
@@ -79,7 +79,7 @@ UV_CACHE_DIR=/tmp/strix-uv-cache uv run --offline python /tmp/strix-hybrid-rate-
 
 Rate review/registration này chỉ kiểm estimator; chưa có account dashboard charge hoặc pentest quality/resume live để đối chiếu. Peak pricing trong local JSON dùng cách ước lượng thận trọng; operator phải review lại theo thời điểm và account trước chạy.
 
-### Xác minh live cập nhật 06/10/2026
+### QUICK scan lịch sử trước namespace fix — 06/10/2026
 
 Đã có một QUICK scan hoàn tất trên target do owner ủy quyền bằng rate runner trong cùng process. Chi tiết lệnh tái chạy, test offline, mapping log `tier/model/reason`, kết quả, và các `SKIP` trung thực nằm ở [verification.md](verification.md). Kết quả này bổ sung cho lịch sử interrupted run ở Task 08; nó vẫn chưa xác nhận JEV policy, routing parity, PoC/ground truth, routed resume hay charge thực tế.
 
@@ -87,3 +87,8 @@ Rate review/registration này chỉ kiểm estimator; chưa có account dashboar
 ## Cập nhật live JEV — 06/10/2026 19:09 ICT
 
 Owner đã cho phép metadata không-ZDR cho phiên kiểm thử; hai probe live bổ sung qua adapter/router thật trả về `worker` → `openai/deepseek/deepseek-v4.1-flash` (406/41 tokens) và `specialist` → `openai/xiaomi/mimo-v2.6-pro` (413/42), đều `reason=jev`, một request mỗi quyết định. Xem [biên bản xác minh](verification.md). Trong quick scan hoàn tất cùng ngày, JEV được bật nhưng không được hỏi: cả sáu child là `worker`, `reason=rule`, do các luật đóng lựa chọn; do đó scan-level JEV gate **FAIL**, không phải skip/pass. Không có live expert child; GPT entitlement, parity, ground truth/PoC, resume và actual billing còn mở.
+
+
+## Scan-path correction — 2026-10-06 21:02 ICT
+
+The earlier no-JEV scan was caused by namespaced skill IDs not matching bare policy/adapter allowlist labels. Path-qualified labels are now canonicalized before hard-rule matching and before the existing JEV metadata allowlist. The completed live rerun (`host-docker-internal-5173_9145`) contains four actual JEV decisions and six child route/binding matches; the prior failure and root-cause logs, test-first record, exact command, and full gate status are in [verification.md](verification.md). Live Expert, parity, PoC, resume, and actual billing remain open.

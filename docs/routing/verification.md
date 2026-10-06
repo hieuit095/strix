@@ -80,3 +80,53 @@ The exact executed live JEV probes were one `JevClient.decide(envelope, "route_t
 - **FAIL:** JEV was not reached by any of the six children in the bounded quick scan; all were closed rule-floor choices. The required scan-level live JEV assertion remains failed.
 - **NOT OBSERVED:** live Expert/GPT child decision; the prior GPT entitlement response was HTTP 403 `MODEL_NOT_IN_PLAN`. The current configured model label does not prove live entitlement.
 - **INCOMPLETE:** routing-off/floor-only/JEV-on finding and coverage parity, ground-truth/PoC validation, routed-child resume, and actual billing reconciliation.
+
+
+## Scan-path JEV fix and completed re-run — 2026-10-06 21:02 ICT
+
+### Root cause confirmed from the failed scan's own artifacts
+
+The prior run `host-docker-internal-5173_5b0b` had six `child routing` records at `strix_runs/host-docker-internal-5173_5b0b/strix.log` lines 64, 741, 756, 1918, 2212, and 2622; every record was `reason=rule`, `tier=worker`, `jev_choice=none`. Its verification JSON had `jev_answers=[]`, `jev_choice_distribution={}`, `jev_failures=[]`, and `overall=fail`. The stored child metadata and `coverage.json` show the authorization child was passed skill IDs such as `vulnerabilities/idor`, `vulnerabilities/broken_function_level_authorization`, and `vulnerabilities/business_logic`. In the old policy, `apply_hard_rules` lowercased the entire ID then compared it against bare labels `idor`, `business_logic`, and `broken_function_level_authorization`; those comparisons were false. As a result `ask_jev` remained false and `HybridModelRouter.route` returned from its rule-floor branch before calling the client. The same namespace mismatch in the adapter allowlist would have sent an empty `skills` list even if a caller opened JEV.
+
+The seam is visible in [runner.py](../../strix/core/runner.py#L605): the spawn path passes the original skill strings to `Envelope`; policy canonicalizes a namespaced ID to its final label at [policy.py](../../strix/routing/policy.py#L36), and the JEV allowlist uses that same normalizer at [jev.py](../../strix/routing/jev.py#L59). A real call still uses the fixed contract `model=typesafe/jev`, `questions.route_tier` with type `choice`, and posts to `/systemone`. A validated `worker` / `specialist` / `expert` answer is bounded by the hard-rule floor/ceiling, configured tier availability, probability thresholds, and share governor before the final tier's configured model is bound and logged.
+
+### Test-first evidence
+
+The new policy and runner-level tests were first run before production edits:
+
+```bash
+UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_policy.py::test_namespaced_skill_labels_open_the_jev_choice tests/test_routing_spawn.py::test_namespaced_scan_skill_reaches_jev_and_logs_bound_choice tests/test_routing_spawn.py::test_namespaced_open_choice_logs_jev_error_only_after_http_failure -q
+```
+
+RED exited **1** with five failing cases: three namespaced policy cases remained `ask_jev=False`; the spawn case logged Worker/`rule` without an HTTP request; and the error case had no JEV transport failure because it was bypassed. After normalizing both policy matching and adapter metadata, the same command exited **0**, **5 passed**. One intermediate run after the production change exited **1** only because caplog was scoped to the runner logger and did not capture the JEV logger; the test capture scope was corrected, then the same command passed. The green spawn assertion verifies a real mocked transport path through the runner closure: it captured `typesafe/jev`, `route_tier`, canonical allowlisted `idor`, the `specialist` choice, and a `reason=jev` Specialist/MiMo route log. The separate HTTP 503 case verifies `reason=jev_error` only when transport raises `HTTPStatusError` and falls back to the rule floor.
+
+### Completed real quick scan evidence
+
+The protected environment was sourced with shell tracing disabled. The exact verifier invocation was:
+
+```bash
+set +x
+set -a; . /home/hieuit095/.strix-live.env; set +a
+trap 'unset LLM_API_KEY CMD_API_KEY COMMAND_CODE_API_BASE LLM_API_BASE STRIX_LLM STRIX_API_TYPE STRIX_REASONING_EFFORT LLM_TIMEOUT STRIX_ROUTING_LIVE_TESTS STRIX_ROUTING_ENABLED STRIX_ROUTING_SPECIALIST_MODEL STRIX_ROUTING_EXPERT_MODEL STRIX_ROUTING_JEV_ENABLED STRIX_ROUTING_JEV_POLICY_VERIFIED STRIX_ROUTING_SPECIALIST_THRESHOLD STRIX_ROUTING_EXPERT_THRESHOLD STRIX_ROUTING_SPECIALIST_CAP STRIX_ROUTING_EXPERT_CAP' EXIT
+export STRIX_ROUTING_ENABLED=true STRIX_ROUTING_SPECIALIST_MODEL='openai/xiaomi/mimo-v2.6-pro' STRIX_ROUTING_EXPERT_MODEL='openai/gpt-6.1-sol'
+export STRIX_ROUTING_JEV_ENABLED=true STRIX_ROUTING_JEV_POLICY_VERIFIED=1
+export STRIX_ROUTING_SPECIALIST_THRESHOLD=0.65 STRIX_ROUTING_EXPERT_THRESHOLD=0.65 STRIX_ROUTING_SPECIALIST_CAP=0.25 STRIX_ROUTING_EXPERT_CAP=0.05
+UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline python scripts/verify_hybrid_routing.py --target http://host.docker.internal:5173 --timeout-seconds 10800
+```
+
+The verifier exited **0**. Its offline portion exited **0** (**90 passed**), the target probe returned HTTP **200**, and the Strix QUICK scan exited **2** because it filed a report; persisted status was **completed**. The completed scan's own evidence is [routing-verification.json](../../strix_runs/host-docker-internal-5173_9145/routing-verification.json), `overall=pass`, `jev_path=pass`; its route and answer log is [strix.log](../../strix_runs/host-docker-internal-5173_9145/strix.log).
+
+The scan logged six child decisions and all six matched saved model bindings: Worker **3** (`openai/deepseek/deepseek-v4.1-flash`) and Specialist **3** (`openai/xiaomi/mimo-v2.6-pro`). Four `route_tier` requests to `typesafe/jev` returned `choice=specialist`; safe usage logs recorded respectively **414/42**, **416/42**, **413/42**, and **416/42** input/output tokens. The four scan decisions carried `reason=jev` and that choice. Three selected the Specialist/MiMo model; one stayed Worker/DeepSeek because the specialist probability did not meet the configured **0.65** threshold. The other two Worker children had closed rule choices and correctly logged `reason=rule`, without a JEV request. No JEV failures occurred.
+
+No Expert route was observed: all four valid JEV choices were `specialist`, which cannot request Expert under the router's choice ceiling; the test did not observe an Expert choice or Expert binding. Thus live Worker and Specialist choice/model bindings pass, while live Expert/GPT selection remains unverified (the configured model is `openai/gpt-6.1-sol`; live entitlement was previously HTTP 403 `MODEL_NOT_IN_PLAN`).
+
+Usage was **205 provider requests**, **21,626,792 input + 255,031 output = 21,881,823 tokens**, with estimated cost **USD 0.7686115896** against the USD 5 limit (estimate, not provider billing). Coverage recorded **60 surfaces**, **32 gaps**, and **1 report filed**; outcomes: 2 reported, 16 no-issue-found, 10 ruled-out, 1 not-applicable, 31 needs-follow-up. This is completed bounded coverage, not a ground-truth parity or clean-scan claim. The isolated target remained read-only at source HEAD `6c0fc01e7f969bbf75ef663606aa4a4d7c747620`; Vite and the isolated Supabase services were stopped after the scan.
+
+### Current assertion status
+
+- **PASS:** namespaced IDOR, business-logic, and BFLA labels open policy choices; JEV receives only canonical allowlisted labels.
+- **PASS:** scan-path `ask_jev` reaches the real `typesafe/jev` System One endpoint and `route_tier` choice parser; four answers are matched to four `reason=jev` decisions in the scan log.
+- **PASS:** all six route-log tier/model pairs match persisted bindings; JEV Specialist answers select MiMo when the threshold permits, while one below-threshold answer remains Worker/DeepSeek.
+- **PASS:** `jev_error` fallback is emitted in the runner integration test only after the fake transport returns HTTP 503 and raises `HTTPStatusError`; live scan had zero JEV failures.
+- **NOT OBSERVED:** live Expert/GPT decision. JEV answered Specialist four times and never Expert.
+- **INCOMPLETE:** off/floor-only/JEV-on quality parity, independent ground-truth/PoC review, routed-child resume in a live scan, and actual billing reconciliation.

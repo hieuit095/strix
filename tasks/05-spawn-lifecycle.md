@@ -127,3 +127,8 @@ Nghiệm thu: `uv run pytest tests/test_routing_spawn.py tests/test_agent_graph_
 - Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
 - Final full suite: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, 2565 passed, 13 skipped, 3 xfailed.
 - Final required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0**; Ruff, Mypy (141 files), Pyright, and Bandit passed. Task 05 acceptance is complete; resume behavior is verified by Task 06.
+
+
+### Scan spawn regression follow-up — 2026-10-06 21:02 ICT
+
+A new runner-closure regression passes a realistic namespaced skill `vulnerabilities/idor` through `spawn_child_agent`; it asserts exactly one `typesafe/jev` `/systemone` request with `route_tier`, choice/usage log, and child route log `reason=jev jev_choice=specialist` bound to `openai/xiaomi/mimo-v2.6-pro`. A separate 503 transport case asserts `reason=jev_error jev_choice=none` and Worker/DeepSeek floor fallback only after the HTTP failure. RED/GREEN command: see Task 01; live proof comes from the full scan evidence in Task 08.

@@ -135,3 +135,10 @@ Implementation verified, gate check-all chưa đạt (baseline).
 - Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
 - Final full suite: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, 2565 passed, 13 skipped, 3 xfailed.
 - Final required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0**; Ruff, Mypy (141 files), Pyright, and Bandit passed. Task 01 acceptance is complete; see Task 07 for aggregate evidence.
+
+
+### Production-skill namespace regression — 2026-10-06 21:02 ICT
+
+- Root cause: actual `create_agent` skills may be path-qualified (for example `vulnerabilities/idor`); exact matching against bare policy labels incorrectly closed these open choices.
+- RED command: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_policy.py::test_namespaced_skill_labels_open_the_jev_choice tests/test_routing_spawn.py::test_namespaced_scan_skill_reaches_jev_and_logs_bound_choice tests/test_routing_spawn.py::test_namespaced_open_choice_logs_jev_error_only_after_http_failure -q` → exit **1**, five failures as expected (policy did not open; spawn skipped JEV).
+- GREEN: same command → exit **0**, **5 passed** after matching the final path component. Existing floors/ceilings, thresholds, availability, and governor rules are unchanged. Full routing regression now passes **251 passed, 13 skipped**; full suite/check-all evidence in Task 07.
