@@ -308,6 +308,79 @@ async def test_live_jev_contract(live_settings: Settings, catalog: dict[str, Any
     assert abs(sum(result.probabilities.values()) - 1) <= 0.01
 
 
+async def test_live_jev_envelope_contract(
+    live_settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    if os.getenv("STRIX_ROUTING_LIVE_JEV_ALLOWED") != "1":
+        pytest.skip("JEV metadata without ZDR requires explicit policy approval")
+    caplog.set_level("INFO", logger="strix.routing.jev")
+    live_settings.routing.jev_enabled = True
+    validate_routing_config(live_settings, worker_model=MODELS[0])
+    observed: list[dict[str, Any]] = []
+
+    async def inspect_request(request: httpx.Request) -> None:
+        payload = json.loads(request.content)
+        state = json.loads(payload["state"])
+        question = payload["questions"]["route_tier"]
+        observed.append(
+            {
+                "url": str(request.url),
+                "model": payload.get("model"),
+                "state": state,
+                "question_type": question.get("type"),
+                "criteria": set(question.get("criteria", {})),
+                "secret_absent": (
+                    "ENVELOPE_PRIVATE_MARKER_867" not in request.content.decode()
+                    and (live_settings.llm.api_key or "") not in request.content.decode()
+                ),
+            }
+        )
+
+    usage: list[Usage] = []
+    envelope = Envelope(
+        "synthetic private task ENVELOPE_PRIVATE_MARKER_867",
+        ("vulnerabilities/idor", "custom ENVELOPE_PRIVATE_MARKER_867"),
+        attempts=2,
+        severity="HIGH",
+    )
+    async with httpx.AsyncClient(
+        timeout=live_settings.routing.jev_timeout_s,
+        event_hooks={"request": [inspect_request]},
+    ) as client:
+        adapter = JevClient(
+            client,
+            base_url=BASE,
+            api_key=live_settings.llm.api_key or "",
+            timeout_s=live_settings.routing.jev_timeout_s,
+            on_usage=usage.append,
+        )
+        result = await adapter.decide(envelope, "route_tier")
+
+    assert len(observed) == 1
+    request = observed[0]
+    assert request["url"] == BASE + "/systemone"
+    assert request["model"] == "typesafe/jev"
+    assert request["question_type"] == "choice"
+    assert request["criteria"] == {"worker", "specialist", "expert"}
+    assert request["state"] == {
+        "skills": ["idor"],
+        "attempts": 2,
+        "severity": "high",
+        "task_length_bucket": "short",
+    }
+    assert request["secret_absent"]
+    assert result.choice in {"worker", "specialist", "expert"}
+    assert set(result.probabilities) == {"worker", "specialist", "expert"}
+    assert all(math.isfinite(value) and 0 <= value <= 1 for value in result.probabilities.values())
+    assert abs(sum(result.probabilities.values()) - 1) <= 0.01
+    assert len(usage) == 1 and usage[0].requests == 1
+    assert type(usage[0].input_tokens) is int and type(usage[0].output_tokens) is int
+    assert usage[0].total_tokens == usage[0].input_tokens + usage[0].output_tokens
+    assert usage[0].input_tokens > 0 and usage[0].output_tokens >= 0
+    assert "ENVELOPE_PRIVATE_MARKER_867" not in caplog.text
+    assert live_settings.llm.api_key not in caplog.text
+
+
 @pytest.mark.parametrize("flag", [None, "0", "1"])
 def test_live_gate_skips_before_http(monkeypatch: pytest.MonkeyPatch, flag: str | None) -> None:
     monkeypatch.delenv("STRIX_ROUTING_LIVE_TESTS", raising=False)
