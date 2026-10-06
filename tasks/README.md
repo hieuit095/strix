@@ -54,10 +54,15 @@ Báo cáo cuối phải phân biệt: `offline verified`, `live verified`, `bloc
 | 00 | Hoàn tất baseline | 2355 passed/3 existing xfailed; quality baseline 910 Pyright errors |
 | 01–06 | Implementation, targeted regressions, full suite, and final quality gate pass | Task records; current-source `make check-all` and full suite recheck in Task 07 |
 | 07 | Offline acceptance passed; live verification handed to Task 08 | Current-source run: 2565 passed/13 skipped/3 xfailed; `make check-all` exits 0 (Ruff, Mypy, Pyright, Bandit) |
-| 08 | Offline harness/catalog gates pass; one real QUICK scan is interrupted; rollout incomplete | 20 passed/13 skipped offline; current DeepSeek inference authenticated; owner target HEAD authorized and served locally; scan exited 124 after 900s with `run.json` interrupted, estimated USD 0.102453264, 2 surfaces/4 gaps/0 findings filed; no quality parity; JEV policy/ground-truth/resume/actual billing remain incomplete |
+| 08 | JEV-enabled quick scan completed, but scan-level JEV assertion failed; rollout incomplete | See dated Task 08 addendum and `docs/routing/verification.md`; live JEV adapter/router probes separately passed for Worker and Specialist |
 
 ### Tình trạng mới nhất sau continuation — 06/10/2026
 
 Lịch sử 900s timeout ở trên được giữ nguyên. Run đã resume và hoàn tất với timeout 10800s; một bounded QUICK routing smoke riêng cũng hoàn tất. Cả hai chỉ ghi child model Worker/DeepSeek; specialist/expert chưa được quan sát live. Final suite: **2579 passed, 13 skipped, 3 xfailed**; `make check-all` exit 0. Xem [Task 08](08-live-rollout.md) và [bằng chứng tái chạy](../docs/routing/verification.md). Task 08 vẫn incomplete do JEV/non-ZDR, ground-truth/PoC parity, routing-off/floor-only comparisons, routed-child resume, và actual provider charge.
 
 Không tuyên bố toàn plan complete. Branch — `feat/hybrid-router`; Task 07's final full offline suite passes (**2565 passed, 13 skipped, 3 xfailed**) and required `make check-all` passes all gates. With the refreshed key, a real QUICK scan authenticated and made 46 requests, but the 900-second guard ended it as **interrupted** (exit 124); its partial artifacts show 2 surfaces, 4 gaps, and 0 findings filed, not a clean result. JEV is absent from the catalog and non-ZDR policy is unverified; actual billing, ground-truth comparison/coverage, and routed resume remain incomplete. See Tasks 07/08 for dated commands and exit codes. No credential is stored in the repo or evidence.
+
+
+### Cập nhật JEV-centric — 06/10/2026 19:09 ICT
+
+Task 07 JEV precedence/fallback tests and full repository gates passed (details in Task 07 record). Owner-provided non-ZDR probe and two additional real JEV route calls prove the enabled endpoint path and Worker/Specialist mapping. The bounded scan completed with JEV enabled but emitted six rule-floor Worker decisions and no JEV call; the verifier correctly exits 1 for the scan-level JEV assertion. Task 08 remains incomplete for that scan gate, live Expert/GPT entitlement, quality/ground-truth/PoC parity, routed resume, and actual billing. Do not mark plan §7 rollout complete.

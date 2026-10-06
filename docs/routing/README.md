@@ -1,6 +1,6 @@
 # Child model routing qua CommandCode
 
-Trạng thái ngày 06/10/2026: tích hợp offline; live API, chất lượng pentest và billing chưa được xác minh. Router chọn model child một lần tại spawn. Root giữ model resolved, kể cả override từ CLI. Tools, prompts, skills, scan modes, context/history, max turns và budget policy giữ nguyên.
+Trạng thái cập nhật 06/10/2026 19:09 ICT: offline router/governor được kiểm thử; JEV đã được gọi live qua `typesafe/jev` và chọn Worker/DeepSeek cùng Specialist/MiMo. Quick scan thật hoàn tất nhưng sáu child đều ở rule floor nên scan-level JEV chưa được chứng minh; live Expert, parity, PoC và billing vẫn chưa xác minh. Router chọn model child một lần tại spawn. Root giữ model resolved, kể cả override từ CLI. Tools, prompts, skills, scan modes, context/history, max turns và budget policy giữ nguyên.
 
 ## Cấu hình
 
@@ -30,8 +30,8 @@ export STRIX_LLM="openai/deepseek/deepseek-v4.1-flash"
 export STRIX_ROUTING_ENABLED=true
 export STRIX_ROUTING_SPECIALIST_MODEL="openai/xiaomi/mimo-v2.6-pro"
 export STRIX_ROUTING_EXPERT_MODEL="openai/gpt-6.1-sol"
-export STRIX_ROUTING_JEV_ENABLED=false
-# Chỉ chạy sau khi chủ sở hữu xác định target được phép:
+export STRIX_ROUTING_JEV_ENABLED=true
+# Chỉ bật JEV nếu policy metadata không-ZDR đã được xác nhận/cho phép:
 uv run strix -n -t "$AUTHORIZED_FIXTURE_TARGET" --scan-mode quick --max-budget 5
 ```
 
@@ -82,3 +82,8 @@ Rate review/registration này chỉ kiểm estimator; chưa có account dashboar
 ### Xác minh live cập nhật 06/10/2026
 
 Đã có một QUICK scan hoàn tất trên target do owner ủy quyền bằng rate runner trong cùng process. Chi tiết lệnh tái chạy, test offline, mapping log `tier/model/reason`, kết quả, và các `SKIP` trung thực nằm ở [verification.md](verification.md). Kết quả này bổ sung cho lịch sử interrupted run ở Task 08; nó vẫn chưa xác nhận JEV policy, routing parity, PoC/ground truth, routed resume hay charge thực tế.
+
+
+## Cập nhật live JEV — 06/10/2026 19:09 ICT
+
+Owner đã cho phép metadata không-ZDR cho phiên kiểm thử; hai probe live bổ sung qua adapter/router thật trả về `worker` → `openai/deepseek/deepseek-v4.1-flash` (406/41 tokens) và `specialist` → `openai/xiaomi/mimo-v2.6-pro` (413/42), đều `reason=jev`, một request mỗi quyết định. Xem [biên bản xác minh](verification.md). Trong quick scan hoàn tất cùng ngày, JEV được bật nhưng không được hỏi: cả sáu child là `worker`, `reason=rule`, do các luật đóng lựa chọn; do đó scan-level JEV gate **FAIL**, không phải skip/pass. Không có live expert child; GPT entitlement, parity, ground truth/PoC, resume và actual billing còn mở.

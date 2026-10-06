@@ -204,3 +204,12 @@ Environment diagnostic riêng: config Pyright tạm dưới /tmp giữ nguyên s
 - Required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0**: Ruff format/check passed; Mypy passed 141 source files; Pyright reported 0 errors/warnings; Bandit reported no issues.
 - Final full suite `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings** in 384.76s. Live opt-in skips are not live proof.
 - Task 07 is **offline accepted**. The owner-authorized live scan and Task 08 gates are recorded separately; no live or overall-plan completion is implied.
+
+
+### JEV-centric regression follow-up — 06/10/2026
+
+- RED: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_jev.py::test_jev_choice_precedes_higher_probability_and_logs_safe_usage tests/test_routing_verification.py::test_jev_error_evidence_requires_a_matching_real_failure -q` → exit **1**. It exposed that router ignored the JEV choice and the verifier lacked real-failure matching.
+- GREEN: same command → exit **0**, **2 passed** after minimal precedence/evidence checks; `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_verification.py::test_jev_route_log_requires_the_observed_choice -q` → RED exit **1**, then GREEN exit **0**, **1 passed**. Threshold test verifies JEV choice cannot bypass probability threshold.
+- `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_*.py -q` → exit **0**, **246 passed, 13 skipped**. `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0** (Ruff, mypy, Pyright, Bandit).
+- Full suite after the routing behavior changes: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, **2584 passed, 13 skipped, 3 xfailed, 106 warnings**.
+- Current implementation logs JEV choice/usage without task/state/body/secrets; worker/specialist/expert configured mapping and precedence are deterministic-tested. Live quick scan and direct JEV probe outcomes are separately recorded in Task 08 and `docs/routing/verification.md`; live scan did not itself invoke JEV.
