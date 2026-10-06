@@ -6,9 +6,13 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from strix.config import load_settings
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 logger = logging.getLogger(__name__)
@@ -84,6 +88,7 @@ def count_tokens(model: str, text: str) -> int:
     try:
         import litellm
 
-        return int(litellm.token_counter(model=_lookup_key(model), text=text))
+        token_counter = cast("Callable[..., int]", cast("Any", litellm).token_counter)
+        return int(token_counter(model=_lookup_key(model), text=text))
     except Exception:  # noqa: BLE001 - tokenizer may be unavailable for some models.
         return len(text.encode("utf-8"))
