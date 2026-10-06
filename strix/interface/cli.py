@@ -5,7 +5,7 @@ import signal
 import sys
 import threading
 import time
-from typing import Any
+from typing import Any, cast
 
 from rich.console import Console
 from rich.live import Live
@@ -125,7 +125,7 @@ async def run_cli(args: Any) -> None:  # noqa: PLR0915
     def display_vulnerability_deleted(report: dict[str, Any]) -> None:
         report_id = str(report.get("id", "unknown"))
         deletion = report.get("deletion")
-        deletion = deletion if isinstance(deletion, dict) else {}
+        deletion = cast("dict[str, Any]", deletion) if isinstance(deletion, dict) else {}
         deleted_by = deletion.get("agent_name") or deletion.get("agent_id") or "agent"
         text = Text()
         text.append("Withdrawn: ", style="bold")
