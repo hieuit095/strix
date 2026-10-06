@@ -6,6 +6,11 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 from strix.config import apply_config_override
 from strix.config.settings import DEFAULT_MAX_TURNS
@@ -459,29 +464,32 @@ def load_resume_state(args: argparse.Namespace) -> None:
             f"(missing {state_path}; remove --resume for a fresh start)"
         )
     try:
-        state = read_run_record(run_dir)
+        state: dict[str, Any] = read_run_record(run_dir)
     except (RuntimeError, TypeError) as exc:
         raise ResumeError(f"--resume {args.resume}: run.json unreadable: {exc}") from exc
 
-    args.targets_info = state.get("targets_info") or []
+    raw_targets: Any = state.get("targets_info")
+    targets_info: list[Any] = raw_targets or []
+    args.targets_info = targets_info
     # A target-less run has no targets_info at all. It is driven by its
     # instruction, over a mounted working directory or over nothing when the
     # mount was declined, so either of those is enough to resume it.
     workspace_mount = state.get("workspace_mount") or None
-    if not args.targets_info and not workspace_mount and not state.get("user_instruction"):
+    if not targets_info and not workspace_mount and not state.get("user_instruction"):
         raise ResumeError(f"--resume {args.resume}: run.json has no targets_info")
 
-    for target in args.targets_info:
+    for target in targets_info:
         if not isinstance(target, dict):
             continue
-        details = target.get("details") or {}
-        if target.get("type") == "local_code" and details.get("target_path"):
+        target_data = cast("dict[str, Any]", target)
+        details = cast("dict[str, Any]", target_data.get("details") or {})
+        if target_data.get("type") == "local_code" and details.get("target_path"):
             try:
                 check_mountable_dir(Path(details["target_path"]).expanduser())
             except ValueError as exc:
                 raise ResumeError(f"--resume {args.resume}: {exc}") from exc
             continue
-        if target.get("type") != "repository":
+        if target_data.get("type") != "repository":
             continue
         cloned = details.get("cloned_repo_path")
         if not cloned:
@@ -497,7 +505,7 @@ def load_resume_state(args: argparse.Namespace) -> None:
         args.instruction = state.get("instruction")
     if not getattr(args, "user_instruction", None):
         args.user_instruction = state.get("user_instruction") or None
-    args.local_sources = collect_local_sources(args.targets_info)
+    args.local_sources = collect_local_sources(targets_info)
     # Remount the workspace the run was started with. The user already confirmed
     # this directory, so the target mount guard does not apply to it; it only has
     # to still be there.
@@ -508,12 +516,21 @@ def load_resume_state(args: argparse.Namespace) -> None:
     # edited run.json cannot widen what a resume places. A file deleted between
     # runs is dropped rather than fatal: it is context for the agent, not scope.
     if not getattr(args, "workspace_files", None):
+        workspace_files: Iterable[Any] = state.get("workspace_files") or []
         restored = [
             f"{source_path}:{workspace_path}"
-            for workspace_file in state.get("workspace_files") or []
+            for workspace_file in workspace_files
             if isinstance(workspace_file, dict)
-            and (source_path := Path(str(workspace_file.get("source_path") or ""))).is_file()
-            and (workspace_path := str(workspace_file.get("workspace_path") or ""))
+            and (
+                source_path := Path(
+                    str(cast("dict[str, Any]", workspace_file).get("source_path") or "")
+                )
+            ).is_file()
+            and (
+                workspace_path := str(
+                    cast("dict[str, Any]", workspace_file).get("workspace_path") or ""
+                )
+            )
         ]
         try:
             args.workspace_files = resolve_workspace_files(restored)
