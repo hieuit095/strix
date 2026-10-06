@@ -1,7 +1,7 @@
 # PROJECT MAP: Strix Hybrid Router
 
 > **Last Ground-Truth Audit:** 2026-10-07T03:32:00+07:00
-> **Status:** Evidence complete; final commit and owner-fork push pending
+> **Status:** Delivered on `feat/hybrid-router`; evidence complete with explicit Task 08 external blockers
 > **Repository Root:** `/home/hieuit095/strix`
 > **Architecture Stack:** Python 3.12+ CLI, asyncio agent graph, Docker sandbox, provider-backed LLMs
 
@@ -16,7 +16,7 @@
   - [strix_hybrid_router_plan.md](file:///home/hieuit095/strix/strix_hybrid_router_plan.md) - §7 DoD reconciliation.
   - [docs/routing/verification.md](file:///home/hieuit095/strix/docs/routing/verification.md) - reproducible secret-free live/offline evidence.
   - [tests/test_routing_live.py](file:///home/hieuit095/strix/tests/test_routing_live.py) - opt-in envelope contract regression (commit 652e6d4).
-- **Current Objective:** All requested implementation, tests, live comparisons, resume, documentation and task checklists are reconciled. Remaining are final secret/diff checks, a documentation commit and the authorized push to `origin` only.
+- **Current Objective:** All requested implementation, tests, live comparisons, resume, documentation and task checklists are reconciled. Only external Task 08 prerequisites remain: GPT-6.1 entitlement, owner truth-set, and read-only billing statement.
 - **Completed Milestones (verified):**
   - ✅ **2026-10-06:** Routing policy/governor, configuration, usage accounting, JEV adapter, spawn lifecycle, and snapshot/resume implementation committed on feat/hybrid-router.
   - ✅ **2026-10-06:** Namespace-aware policy/allowlist correction passed RED/GREEN and a real JEV-participating scan; evidence is recorded in Task 08 and routing verification docs.
@@ -24,9 +24,7 @@
   - ✅ **2026-10-07:** Real JEV-enabled 3-run comparison and routed resume completed; resume exit 2/status completed with full recorded coverage, exact old child model and counters preserved.
   - ✅ **2026-10-07:** Task 00–08 checkboxes reconciled; Task 08 GPT entitlement, ground-truth/PoC and actual billing gates remain explicitly blocked.
 - **Immediate Next Steps:**
-  1. Run final diff/secret and target read-only checks; refresh the map’s post-commit status.
-  2. Commit the task/documentation reconciliation separately from the envelope test commit.
-  3. Push `feat/hybrid-router` only to the authorized owner fork; verify remote branch and clean worktree.
+  1. No repository work remains. Wait for the owner to supply the missing GPT entitlement, expected-finding/PoC truth set, or billing statement before reopening the corresponding Task 08 gates.
 
 ---
 
@@ -70,3 +68,5 @@ flowchart LR
 | 2026-10-07 02:00 ICT | Created map during final all-task audit | Navigator map was absent | Verified every mapped active path exists; final acceptance and commit status are recorded in the later audit entry |
 
 | 2026-10-07 03:32 ICT | Completed Task 08 live comparison and resume; reconciled task 00–08 | Resume 5f2f completed exit 2 / coverage complete; three-run comparison recorded | Final remaining gates are external: GPT 403, no expected truth set, billing unread; no release authorization |
+
+| 2026-10-07 03:34 ICT | Pushed final evidence commits | `feat/hybrid-router` HEAD `3200bea` matches `origin/feat/hybrid-router`; worktree clean | Owner fork only; no upstream, PR, issue, merge, or deploy |
