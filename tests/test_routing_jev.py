@@ -173,6 +173,8 @@ async def test_task_length_boundaries(length: int, bucket: str) -> None:
         (("answers",), {}),
         (("answers", "route_tier", "type"), "score"),
         (("answers", "route_tier", "choice"), "other"),
+        (("answers", "route_tier", "choice"), []),
+        (("answers", "route_tier", "choice"), {}),
         (("answers", "route_tier", "probabilities"), {"worker": 0.2, "specialist": 0.8}),
         (
             ("answers", "route_tier", "probabilities"),
@@ -345,6 +347,29 @@ async def test_transport_and_json_errors(failure: str) -> None:
             assert (d.tier, d.reason) == (Tier.SPECIALIST, "jev_error")
     assert len(requests) == 1
     assert not usage
+
+
+@pytest.mark.parametrize("choice", [[], {}])
+async def test_non_string_choice_falls_back_safely(choice: object) -> None:
+    payload = copy.deepcopy(VALID)
+    payload["answers"]["route_tier"]["choice"] = choice
+    usage: list[Usage] = []
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
+    ) as client:
+        adapter = JevClient(
+            client,
+            base_url="https://example.test/v1",
+            api_key="dummy",
+            timeout_s=5,
+            on_usage=usage.append,
+        )
+        router = HybridModelRouter(
+            adapter, BudgetGovernor(1, 1), specialist_threshold=0.65, expert_threshold=0.65
+        )
+        decision = await router.route(Envelope("synthetic", ("rce",)))
+    assert (decision.tier, decision.reason) == (Tier.SPECIALIST, "jev_error")
+    assert len(usage) == 1 and usage[0].total_tokens == 183
 
 
 async def test_usage_callback_error_never_retries_http() -> None:

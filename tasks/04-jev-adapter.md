@@ -107,6 +107,8 @@ make check-all
 
 ## Biên bản hoàn thành
 
+Task 07 phát hiện thêm regression malformed choice list/dict: `uv run pytest tests/test_routing_jev.py::test_malformed_answer_rejected_with_usage -q` RED exit 1, 2 failed/17 passed (TypeError unhashable). Thêm guard string, cùng lệnh GREEN exit 0, 19 passed; `uv run pytest tests/test_routing_jev.py tests/test_routing_router.py -q` exit 0, 69 passed. Usage vẫn ghi một lần và malformed response fallback đúng exception contract. Log `/tmp/strix-hybrid-task04-choice-red.log`.
+
 Implementation verified, check-all baseline chưa đạt.
 
 - Thêm production module thứ hai `strix/routing/jev.py`, test_routing_jev; router log error class và catch network/parse RuntimeError/ValueError/TimeoutError/httpx.HTTPError, không log raw exception/body/key.

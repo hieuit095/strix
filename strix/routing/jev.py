@@ -103,7 +103,12 @@ class JevClient:
             )
         )
         answer = _object(_object(payload.get("answers")).get(question))
-        if answer.get("type") != "choice" or answer.get("choice") not in _QUESTION["criteria"]:
+        choice = answer.get("choice")
+        if (
+            answer.get("type") != "choice"
+            or not isinstance(choice, str)
+            or choice not in _QUESTION["criteria"]
+        ):
             raise ValueError("invalid JEV choice answer")
         _probability(answer.get("confidence"))
         raw_probabilities = _object(answer.get("probabilities"))
