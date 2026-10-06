@@ -78,3 +78,7 @@ UV_CACHE_DIR=/tmp/strix-uv-cache uv run --offline python /tmp/strix-hybrid-rate-
 ```
 
 Rate review/registration này chỉ kiểm estimator; chưa có account dashboard charge hoặc pentest quality/resume live để đối chiếu. Peak pricing trong local JSON dùng cách ước lượng thận trọng; operator phải review lại theo thời điểm và account trước chạy.
+
+### Xác minh live cập nhật 06/10/2026
+
+Đã có một QUICK scan hoàn tất trên target do owner ủy quyền bằng rate runner trong cùng process. Chi tiết lệnh tái chạy, test offline, mapping log `tier/model/reason`, kết quả, và các `SKIP` trung thực nằm ở [verification.md](verification.md). Kết quả này bổ sung cho lịch sử interrupted run ở Task 08; nó vẫn chưa xác nhận JEV policy, routing parity, PoC/ground truth, routed resume hay charge thực tế.
