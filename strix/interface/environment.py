@@ -34,8 +34,8 @@ def _missing_web_search_vars(integrations: IntegrationSettings) -> list[str]:
 def validate_environment() -> None:
     logger.info("Validating environment")
     console = Console()
-    missing_required_vars = []
-    missing_optional_vars = []
+    missing_required_vars: list[str] = []
+    missing_optional_vars: list[str] = []
 
     settings = load_settings()
 
