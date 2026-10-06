@@ -21,6 +21,11 @@ AMBIGUOUS = frozenset(
 _SEVERE = frozenset({"high", "critical"})
 
 
+def normalized_skill_labels(skills: tuple[str, ...]) -> set[str]:
+    """Match both canonical skill labels and their namespaced scan declarations."""
+    return {skill.rsplit("/", maxsplit=1)[-1].lower() for skill in skills}
+
+
 @dataclass(frozen=True)
 class RuleResult:
     floor: Tier
@@ -30,7 +35,7 @@ class RuleResult:
 
 def apply_hard_rules(env: Envelope) -> RuleResult:
     """Deterministic bounds on the tier; ``ask_jev`` marks a genuinely open choice."""
-    skills = {s.lower() for s in env.skills}
+    skills = normalized_skill_labels(env.skills)
     floor, ceiling, ask = Tier.WORKER, Tier.WORKER, False
     if skills & AMBIGUOUS:
         ceiling, ask = max_tier(ceiling, Tier.SPECIALIST), True

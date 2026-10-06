@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
@@ -425,6 +426,69 @@ async def test_jev_selects_specialist_for_ambiguous_task(
     )
     assert result["children"][0]["routing"]["tier"] == "specialist"
     assert len(requests) == 1
+
+
+async def test_namespaced_scan_skill_reaches_jev_and_logs_bound_choice(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("INFO")
+    requests, clients = mock_jev_http(monkeypatch)
+    result = await run_spawn(
+        monkeypatch,
+        tmp_path,
+        enabled=True,
+        jev=True,
+        skills=["vulnerabilities/idor"],
+    )
+
+    child = result["children"][0]
+    assert child["routing"]["tier"] == "specialist"
+    assert child["routing"]["model"] == "openai/xiaomi/mimo-v2.6-pro"
+    assert len(requests) == 1
+    body = json.loads(requests[0].content)
+    assert body["model"] == "typesafe/jev"
+    assert json.loads(body["state"])["skills"] == ["idor"]
+    assert "JEV routing answer choice=specialist input_tokens=180 output_tokens=3" in caplog.text
+    assert (
+        "child routing tier=specialist model=openai/xiaomi/mimo-v2.6-pro "
+        "reason=jev jev_choice=specialist"
+    ) in caplog.text
+    assert clients[0].is_closed
+
+
+async def test_namespaced_open_choice_logs_jev_error_only_after_http_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("INFO")
+
+    def client() -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda _req: httpx.Response(503, text="SYNTHETIC_FAILURE")
+            )
+        )
+
+    monkeypatch.setattr(runner, "httpx", SimpleNamespace(AsyncClient=client))
+    result = await run_spawn(
+        monkeypatch,
+        tmp_path,
+        enabled=True,
+        jev=True,
+        skills=["vulnerabilities/idor"],
+    )
+
+    child = result["children"][0]
+    assert child["routing"]["tier"] == "worker"
+    assert child["routing"]["model"] == "openai/deepseek/deepseek-v4.1-flash"
+    assert "JEV routing failed (HTTPStatusError); using the rule floor" in caplog.text
+    assert (
+        "child routing tier=worker model=openai/deepseek/deepseek-v4.1-flash "
+        "reason=jev_error jev_choice=none"
+    ) in caplog.text
 
 
 @pytest.mark.parametrize(

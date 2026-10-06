@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from agents.usage import Usage
 
-from strix.routing.policy import AMBIGUOUS, HIGH_IMPACT
+from strix.routing.policy import AMBIGUOUS, HIGH_IMPACT, normalized_skill_labels
 from strix.routing.types import DecisionResult, Envelope
 
 
@@ -71,7 +71,7 @@ class JevClient:
                 "state": json.dumps(
                     {
                         "skills": sorted(
-                            {s.lower() for s in envelope.skills} & (HIGH_IMPACT | AMBIGUOUS)
+                            normalized_skill_labels(envelope.skills) & (HIGH_IMPACT | AMBIGUOUS)
                         ),
                         "attempts": envelope.attempts,
                         "severity": (

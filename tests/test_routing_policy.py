@@ -41,3 +41,22 @@ def test_severity_critical_raises_floor_to_specialist() -> None:
 
 def test_skills_are_case_insensitive() -> None:
     assert apply_hard_rules(env("RCE")).floor is Tier.SPECIALIST
+
+
+@pytest.mark.parametrize(
+    ("skill", "floor", "ceiling"),
+    [
+        ("vulnerabilities/idor", Tier.WORKER, Tier.SPECIALIST),
+        ("vulnerabilities/business_logic", Tier.WORKER, Tier.SPECIALIST),
+        (
+            "vulnerabilities/broken_function_level_authorization",
+            Tier.SPECIALIST,
+            Tier.EXPERT,
+        ),
+    ],
+)
+def test_namespaced_skill_labels_open_the_jev_choice(
+    skill: str, floor: Tier, ceiling: Tier
+) -> None:
+    result = apply_hard_rules(env(skill))
+    assert (result.floor, result.ceiling, result.ask_jev) == (floor, ceiling, True)
