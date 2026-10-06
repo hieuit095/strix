@@ -26,17 +26,15 @@ import contextlib
 import logging
 import os
 import uuid
+from collections.abc import Callable
 from typing import Any, cast
 
 from agents.sandbox.errors import ExposedPortUnavailableError
 from agents.sandbox.manifest import Manifest
+from agents.sandbox.sandboxes import docker as sdk_docker
 from agents.sandbox.sandboxes.docker import (
     DockerSandboxClient,
     DockerSandboxSession,
-    _build_docker_volume_mounts,
-    _docker_port_key,
-    _manifest_requires_fuse,
-    _manifest_requires_sys_admin,
 )
 from agents.sandbox.session.sandbox_session import SandboxSession
 from agents.sandbox.types import ExposedPortEndpoint
@@ -52,6 +50,25 @@ logger = logging.getLogger(__name__)
 
 
 _SANDBOX_NETWORK_ENV = "STRIX_DOCKER_SANDBOX_NETWORK"
+_SDK_ATTRIBUTE_MISSING = object()
+
+
+def _sdk_private_helper(name: str) -> Callable[..., Any]:
+    """Resolve a helper from the SDK's pinned private Docker implementation."""
+    return cast("Callable[..., Any]", getattr(sdk_docker, name))
+
+
+def _sdk_attribute(value: object, name: str, default: Any = _SDK_ATTRIBUTE_MISSING) -> Any:
+    """Read a pinned SDK-private attribute without changing getattr semantics."""
+    if default is _SDK_ATTRIBUTE_MISSING:
+        return getattr(value, name)
+    return getattr(value, name, default)
+
+
+_build_docker_volume_mounts = _sdk_private_helper("_build_docker_volume_mounts")
+_docker_port_key = _sdk_private_helper("_docker_port_key")
+_manifest_requires_fuse = _sdk_private_helper("_manifest_requires_fuse")
+_manifest_requires_sys_admin = _sdk_private_helper("_manifest_requires_sys_admin")
 
 
 def _sandbox_network() -> str | None:
@@ -142,9 +159,10 @@ class StrixDockerSandboxSession(DockerSandboxSession):
                 cause=e,
             ) from e
 
-        attrs = getattr(self._container, "attrs", {}) or {}
-        networks = attrs.get("NetworkSettings", {}).get("Networks", {})
-        endpoint = networks.get(self.sandbox_network) or {}
+        attrs = cast("dict[str, Any]", getattr(self._container, "attrs", {}) or {})
+        network_settings = cast("dict[str, Any]", attrs.get("NetworkSettings") or {})
+        networks = cast("dict[str, Any]", network_settings.get("Networks") or {})
+        endpoint = cast("dict[str, Any]", networks.get(self.sandbox_network) or {})
         ip = endpoint.get("IPAddress") or endpoint.get("GlobalIPv6Address")
         if not isinstance(ip, str) or not ip:
             raise ExposedPortUnavailableError(
@@ -221,10 +239,11 @@ class StrixDockerSandboxClient(DockerSandboxClient):
         # ----- END VERBATIM COPY -----
 
         # Strix injections — append, don't overwrite, so FUSE/SYS_ADMIN survives.
-        cap_add = create_kwargs.setdefault("cap_add", [])
-        if not isinstance(cap_add, list):
-            cap_add = list(cap_add)
-            create_kwargs["cap_add"] = cap_add
+        cap_add_value: Any = create_kwargs.setdefault("cap_add", [])
+        if not isinstance(cap_add_value, list):
+            cap_add_value = list(cap_add_value)
+            create_kwargs["cap_add"] = cap_add_value
+        cap_add = cast("list[str]", cap_add_value)
         for cap in ("NET_ADMIN", "NET_RAW"):
             if cap not in cap_add:
                 cap_add.append(cap)
@@ -241,16 +260,18 @@ class StrixDockerSandboxClient(DockerSandboxClient):
         # nested spec lands on top of the tree it covers.
         bind_mounts = self.strix_bind_mounts or ()
         if bind_mounts:
-            mounts = create_kwargs.setdefault("mounts", [])
-            for spec in sorted(bind_mounts, key=lambda s: str(s["target"]).count("/")):
-                mounts.append(
-                    DockerSDKMount(
-                        target=spec["target"],
-                        source=spec["source"],
-                        type="bind",
-                        read_only=spec.get("read_only", False),
-                    )
+            mounts: list[DockerSDKMount] = cast(
+                "list[DockerSDKMount]", create_kwargs.setdefault("mounts", [])
+            )
+            mounts.extend(
+                DockerSDKMount(
+                    target=spec["target"],
+                    source=spec["source"],
+                    type="bind",
+                    read_only=spec.get("read_only", False),
                 )
+                for spec in sorted(bind_mounts, key=lambda s: str(s["target"]).count("/"))
+            )
 
         logger.debug(
             "Creating sandbox container: image=%s caps=%s exposed_ports=%s",
@@ -269,14 +290,16 @@ class StrixDockerSandboxClient(DockerSandboxClient):
     async def create(self, **kwargs: Any) -> SandboxSession:
         session = await super().create(**kwargs)
         network = _sandbox_network()
-        inner = session._inner
+        inner = _sdk_attribute(session, "_inner")
         if network and isinstance(inner, DockerSandboxSession):
             inner.__class__ = StrixDockerSandboxSession
             cast("StrixDockerSandboxSession", inner).sandbox_network = network
         return session
 
     async def delete(self, session: SandboxSession) -> SandboxSession:
-        container_id = getattr(getattr(session._inner, "state", None), "container_id", None)
+        inner = _sdk_attribute(session, "_inner", None)
+        state = _sdk_attribute(inner, "state", None)
+        container_id = _sdk_attribute(state, "container_id", None)
         if container_id:
             # Best-effort kill: NotFound/APIError cover a gone or unhappy
             # container. RequestException covers a torn-down daemon socket —
