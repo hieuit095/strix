@@ -35,7 +35,7 @@ Không skip ở module import trước khi test runner biết số case; không 
 - [x] Kiểm pricing resolver cho exact Strix IDs và JEV: gọi `resolve_litellm_model`/`LLMUsageLedger.record` trên Usage tổng hợp input=1000/output=100. Báo giá unknown nếu resolve None hoặc estimate==0 với rate trả phí; không dùng “$0” để mở gate budget.
 - [x] Khi giá chưa có: chỉ dùng `litellm.register_model` có sẵn và reviewed rates trong **process chạy test/scan**, clear resolver cache sau register. Không sửa pricing engine/ledger. Mapping phải gồm input_cost_per_token=rate_per_million/1e6, output_cost_per_token, cache_read_input_token_cost và litellm_provider đúng route estimator; chạy lại Usage estimate test. Đăng ký không ghi đè capability flags/reasoning/tool support của existing model entry: merge entry cũ trước override các price fields. Đã xác minh bằng preflight và thực hiện trong tiến trình scan; chưa xác minh charge thực tế.
 - [x] Nếu phải inject rates để scan CLI dùng được, dùng script cục bộ ngoài tracked production: load reviewed JSON, register_model, cache_clear, set sys.argv như CLI rồi gọi `strix.interface.main.main()` **trong cùng process**. Không register trong process A rồi launch subprocess B rồi cho rằng B đã nhận giá. Script/JSON operator giữ local, không SDK/config field mới. Đã dùng `/tmp/strix-hybrid-rate-runner.py`; scan chưa khởi động vì auth 401.
-- [ ] Giá tham khảo plan là snapshot ngày 05/10/2026, xem lại nguồn chính thức trước dùng. Nếu giá không xác minh được, gate live-budget chưa đạt; dừng phần phụ thuộc, giữ offline deliverable.
+- [x] Giá tham khảo plan là snapshot ngày 05/10/2026; bảng chính thức được xem lại ngày 06/10/2026 trước dùng. Actual charge vẫn chưa xác minh, nên billing/live-budget gate chưa đạt; giữ offline deliverable.
 
 ## Chu trình A — Synthetic API contracts
 
@@ -76,12 +76,12 @@ uv run strix -n -t "$AUTHORIZED_FIXTURE_TARGET" --scan-mode quick --max-budget 5
 
 - [ ] Chỉ sau gates trên: candidate release với flag off → internal floor-only → JEV metadata enabled khi policy cho phép. Merge/deploy chỉ nếu session cho phép; task không tự authorize chúng.
 - [x] Rollback scan mới `STRIX_ROUTING_ENABLED=false`; không dùng flag để đổi model session scan cũ. Resume cần saved bindings/cùng gateway, có hướng dẫn README.
-- [ ] Review final diff không thêm features để hỗ trợ rollout; source of truth vẫn plan.
+- [x] Review final diff không thêm features để hỗ trợ rollout; source of truth vẫn plan.
 
 ## Nghiệm thu cuối toàn plan
 
 - [ ] Task 00–07 có bằng chứng offline, 08 có live contract/quality/resume thật.
-- [ ] Gates account/policy/price/authorized target đều đạt hoặc plan vẫn được báo incomplete ở phần phụ thuộc.
+- [x] Gates account/policy/price/authorized target đều đạt hoặc plan vẫn được báo incomplete ở phần phụ thuộc.
 - [ ] Ground truth findings/PoC/coverage đạt, không rút ngắn năng lực Strix.
 - [ ] DoD plan §7 tick bằng links evidence, không bằng skip/mock.
 
@@ -105,13 +105,13 @@ Files: tests/test_routing_live.py, docs/routing/README.md, biên bản 07/08 và
 
 | Gate | Bằng chứng / prerequisite chính xác |
 |---|---|
-| Key/account | `CMD_API_KEY` hiện diện trong env (chỉ kiểm presence, không in value); **quyền model/credits chưa xác minh**. Không mua credits. |
-| Network/catalog | Public GET bằng httpx timeout 5 giây exit **1**, ConnectError. Web tool cũng không đọc được catalog JSON. Cần network/DNS tới api.commandcode.ai và response model IDs/supported_endpoints hiện hành. |
+| Key/account | Protected key file is present (mode 0600; value never recorded). Authenticated catalog GET returned HTTP 200, but latest inference preflight returned HTTP 401; inference access and credits are **not verified**. Do not buy credits. |
+| Network/catalog | Authenticated GET to `https://api.commandcode.ai/provider/v1/models` returned HTTP 200 and verified the three planned text model IDs plus `/chat/completions` and `/responses`; `typesafe/jev` is absent. |
 | JEV policy | **BLOCKED:** owner chưa xác nhận metadata không ZDR được phép. Không đặt policy opt-in hoặc tự bỏ x-cmd-zdr. |
-| Pricing | Đã review bảng chính thức ngày 06/10/2026, đã audit và registration local; **billing/account charge chưa xác minh**. Không claim zero/free. |
-| Authorized target/ground truth | **BLOCKED:** không có AUTHORIZED_FIXTURE_TARGET hoặc target do owner xác định, scope, fixture commit, expected findings/PoC và nhánh routed child. Không suy từ repo URLs. |
-| Offline prerequisite 07 | **FAILED/UNACCEPTED:** inherited Pyright gate và environment async thread/subprocess discovery; không gọi baseline code failure là external credential blocker. |
-| Commits | **BLOCKED:** .git read-only, git add/commit exit 128 từ Task 07. HEAD vẫn 061646b/feat/hybrid-router, không push. |
+| Pricing | Official public rates reviewed on 06/10/2026; local estimator produced positive estimates for worker/specialist/expert/JEV. **Actual gateway/account charge remains unverified**; do not claim zero/free or exact billing. |
+| Authorized target | **PASS:** owner authorized `/home/hieuit095/h-th-ng-qu-n-l-btxh-nct` at commit `6c0fc01e7f969bbf75ef663606aa4a4d7c747620`; isolated app served HTTP 200 and target remained read-only. Ground-truth fixture, expected findings/PoC, and routed-child evidence remain **INCOMPLETE**. |
+| Offline prerequisite 07 | **PASS:** full suite 2565 passed/13 skipped/3 xfailed and final `make check-all` passes; see Task 07 final acceptance. |
+| Commits | **PASS:** Strix commits `bb29058` (MCP cycle refactor) and `450166f` (task/plan evidence), on `feat/hybrid-router`; no push. |
 
 Pricing: gọi resolve_litellm_model/LLMUsageLedger.record với Usage input=1000/output=100. Bundled local map trả None/estimate=0 cho cả bốn IDs; trước đó map remote đã resolve ba model nhưng không JEV, vẫn chưa khớp gateway. Không dùng zero mở budget gate.
 
