@@ -311,7 +311,7 @@ class ReportUsageHooks(RunHooks[dict[str, Any]]):
         if report_state is None:
             return
 
-        ctx = context.context if isinstance(context.context, dict) else {}
+        ctx = context.context
         agent_name = getattr(agent, "name", None)
         if not isinstance(agent_name, str):
             agent_name = None
