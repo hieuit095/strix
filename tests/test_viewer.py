@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from strix.core.paths import latest_run_dir, runs_base_dir
+from strix.interface.viewer import serve as package_serve
+from strix.interface.viewer import server as viewer_server
 from strix.interface.viewer.cli import _state_label, run_view
 from strix.interface.viewer.server import serve
 from strix.interface.viewer.transcript import (
@@ -26,6 +28,34 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
+
+
+def test_package_serve_delegates_to_server(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    expected = (object(), "http://viewer.test", "session-token")
+    captured: dict[str, object] = {}
+
+    def fake_serve(*args: object, **kwargs: object) -> tuple[object, str, str]:
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return expected
+
+    monkeypatch.setattr(viewer_server, "serve", fake_serve)
+
+    result = package_serve(tmp_path, host="viewer.test", port=8123, open_browser=False)
+
+    assert result == expected
+    assert captured == {
+        "args": (tmp_path,),
+        "kwargs": {
+            "host": "viewer.test",
+            "port": 8123,
+            "open_browser": False,
+            "steer_handler": None,
+        },
+    }
 
 
 def _make_run(base: Path, name: str, *, status: str, end_time: str | None) -> Path:

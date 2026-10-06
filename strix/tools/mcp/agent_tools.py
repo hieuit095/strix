@@ -25,11 +25,11 @@ automatically.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from agents import RunContextWrapper, function_tool
 
-from strix.tools.mcp.client import _errored_tool_output
+from strix.tools.mcp.client import errored_tool_output
 from strix.tools.mcp.naming import namespaced_tool_name
 from strix.tools.mcp.registry import MCP_REGISTRY_CONTEXT_KEY, McpRegistry
 from strix.tools.mcp.session import McpConnectionUnavailableError
@@ -40,7 +40,10 @@ if TYPE_CHECKING:
 
 
 def _registry_from_ctx(ctx: RunContextWrapper) -> McpRegistry | None:
-    context = ctx.context if isinstance(ctx.context, dict) else {}
+    raw_context = cast("Any", ctx).context
+    context: dict[str, Any] = {}
+    if isinstance(raw_context, dict):
+        context = cast("dict[str, Any]", raw_context)
     registry = context.get(MCP_REGISTRY_CONTEXT_KEY)
     return registry if isinstance(registry, McpRegistry) else None
 
@@ -277,10 +280,11 @@ async def call_mcp(
             return invalid_arguments
     if arguments is not None and not isinstance(arguments, dict):
         return invalid_arguments
+    tool_arguments = cast("dict[str, Any]", arguments or {})
     try:
         available = await entry.ensure_catalog()
     except McpConnectionUnavailableError as exc:
-        return _errored_tool_output(str(exc))
+        return errored_tool_output(str(exc))
     valid_names = {mcp_tool.name for mcp_tool in available}
     if tool not in valid_names:
         return (
@@ -290,7 +294,7 @@ async def call_mcp(
     session = await entry.ensure_connected()
     return await session.dispatch(
         tool,
-        arguments or {},
+        tool_arguments,
         label=namespaced_tool_name(connection, tool),
         result_transform=entry.result_transform,
     )

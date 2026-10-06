@@ -386,13 +386,13 @@ class SupervisedMcpSession:
 
         outcome = await self._run_job(job, phase="call")
         if outcome.call_failure is not None:
-            from strix.tools.mcp.client import _errored_tool_output
+            from strix.tools.mcp.client import errored_tool_output
 
-            return _errored_tool_output(self._call_rejected_message(outcome.call_failure))
+            return errored_tool_output(self._call_rejected_message(outcome.call_failure))
         if outcome.dead:
-            from strix.tools.mcp.client import _errored_tool_output
+            from strix.tools.mcp.client import errored_tool_output
 
-            return _errored_tool_output(self._unavailable_message())
+            return errored_tool_output(self._unavailable_message())
         return outcome.value
 
     # -- job routing ----------------------------------------------------------
@@ -695,11 +695,11 @@ class SupervisedMcpSession:
         same task before the error propagates, so a failed connect never orphans
         an MCP subprocess or half-open HTTP session.
         """
-        from strix.tools.mcp.client import _build_server
+        from strix.tools.mcp.client import build_server
 
         if self._config is None:
             raise RuntimeError(f"MCP connection {self._name!r} has no config to connect")
-        built = _build_server(self._config)
+        built = build_server(self._config)
         server = built.server
         self._recorder = built.recorder
         try:

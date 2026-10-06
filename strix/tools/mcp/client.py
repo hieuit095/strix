@@ -38,7 +38,7 @@ from strix.tools.mcp.session import McpConnectionUnavailableError, SupervisedMcp
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import AsyncGenerator, Callable
 
     import httpx
 
@@ -92,7 +92,7 @@ def _auth_headers(config: McpConnectionConfig) -> dict[str, str]:
 
 
 @contextlib.asynccontextmanager
-async def _quiet_stdio_streams(params: Any) -> Any:
+async def _quiet_stdio_streams(params: Any) -> AsyncGenerator[Any, None]:
     """Run a stdio MCP server with its stderr sent to the void.
 
     A stdio MCP server chats on stderr as it boots (the filesystem server, for
@@ -183,6 +183,11 @@ def _build_server(config: McpConnectionConfig) -> BuiltMcpServer:
     )
 
 
+def build_server(config: McpConnectionConfig) -> BuiltMcpServer:
+    """Public typed entry point used by the supervising MCP session."""
+    return _build_server(config)
+
+
 def _mcp_result_to_tool_output(server: MCPServer, result: Any) -> Any:
     """Serialize a ``CallToolResult`` to a tool output, mirroring the agents SDK.
 
@@ -228,7 +233,7 @@ async def dispatch_mcp_call(
       returns whatever the transform returns; or
     - without one, serializes the result the way the agents SDK does (see
       :func:`_mcp_result_to_tool_output`) and, when the result is an MCP error,
-      normalizes it through :func:`_errored_tool_output` so the failure reaches
+      normalizes it through :func:`errored_tool_output` so the failure reaches
       the interfaces (see that function for the representation and why it does not
       corrupt the content the agent receives).
     """
@@ -237,11 +242,11 @@ async def dispatch_mcp_call(
         return result_transform(label, result.model_dump(mode="json"))
     tool_output = _mcp_result_to_tool_output(server, result)
     if getattr(result, "isError", False):
-        return _errored_tool_output(tool_output)
+        return errored_tool_output(tool_output)
     return tool_output
 
 
-def _errored_tool_output(tool_output: Any) -> dict[str, Any]:
+def errored_tool_output(tool_output: Any) -> dict[str, Any]:
     """Tag a serialized MCP error so the interfaces render it as failed.
 
     Both the TUI and the run viewer decide a tool call failed by reading a
