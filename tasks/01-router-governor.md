@@ -129,3 +129,8 @@ Implementation verified, gate check-all chưa đạt (baseline).
 - `uv run ruff format ...`: exit 0; `uv run ruff check strix/routing tests/test_routing_types.py tests/test_routing_policy.py tests/test_routing_governor.py tests/test_routing_router.py`: exit 0.
 - `make check-all`: exit 2, cùng 910 Pyright baseline errors; Ruff/mypy xanh. Log `/tmp/strix-hybrid-task01-check-all.log`; không error ở routing. Chưa tick hoàn thành gate này.
 - Không runner/config/HTTP/dependency/tools/prompts mới. Chưa hoàn thành nghiệm thu toàn task cho đến quality gate được xử lý.
+
+### Kiểm tra gate cuối trên source hiện tại — 06/10/2026
+
+- Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
+- Required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` trên source hiện tại → exit **2**; Ruff/Mypy pass, Pyright còn 3 `reportImportCycles` trong MCP client/session/registry. Vì task này yêu cầu gate tổng xanh, Task 01 vẫn **chưa accepted**; xem Task 07 để command/log đầy đủ.

@@ -110,3 +110,8 @@ Implementation verified; gate check-all còn đỏ baseline, chưa nghiệm thu 
 - `uv run pytest tests/test_routing_settings.py tests/test_routing_runconfig.py tests/test_config_loader.py tests/test_models.py tests/test_llm_extra_headers.py -q`: exit 0, 111 passed.
 - Ruff format/check exit 0 sau sửa import/with formatting; `make check-all`: exit 2, Ruff/mypy xanh, 910 Pyright baseline errors (không routing errors); `/tmp/strix-hybrid-task02-check-all.log`.
 - Fake key + MockTransport, không inference/network/Docker thật. Chưa live verified, chưa thay tool flags/settings để pass upstream.
+
+### Kiểm tra gate cuối trên source hiện tại — 06/10/2026
+
+- Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
+- Required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` trên source hiện tại → exit **2**; Ruff/Mypy pass, Pyright còn 3 `reportImportCycles` trong MCP client/session/registry. Vì task này yêu cầu gate tổng xanh, Task 02 vẫn **chưa accepted**; xem Task 07 để command/log đầy đủ.

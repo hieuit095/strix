@@ -85,3 +85,8 @@ make check-all
 - `make check-all`: exit 2, Ruff/mypy pass, Pyright **910 baseline errors**, không thêm lỗi routing. Logs `/tmp/strix-hybrid-task06-{counts,bindings,legacy}-red.log`, `/tmp/strix-hybrid-task06-check-all.log`.
 
 Chưa đánh dấu acceptance complete vì check-all baseline chưa đạt. Không module/dependency/tool signature/prompt mới ngoài phạm vi task; legacy lifecycle filter giữ nguyên.
+
+### Kiểm tra gate cuối trên source hiện tại — 06/10/2026
+
+- Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
+- Required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` trên source hiện tại → exit **2**; Ruff/Mypy pass, Pyright còn 3 `reportImportCycles` trong MCP client/session/registry. Vì task này yêu cầu gate tổng xanh, Task 06 vẫn **chưa accepted**; xem Task 07 để command/log đầy đủ.

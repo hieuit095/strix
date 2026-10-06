@@ -70,3 +70,8 @@ Implementation verified, quality gate baseline chưa đạt; chưa tick hoàn th
 - `uv run pytest tests/test_cost_tracking.py tests/test_budget_pause_policy.py tests/test_e2e_budget_lifecycle.py tests/test_pricing.py -q`: exit 0, 51 passed, 2 baseline Pydantic warnings.
 - Ruff import/format exit 0; `make check-all`: exit 2, Ruff/mypy xanh, 910 Pyright baseline errors; `/tmp/strix-hybrid-task03-check-all.log`.
 - Usage model đúng không phải bằng chứng gateway charge chính xác. Không inference/scan thật.
+
+### Kiểm tra gate cuối trên source hiện tại — 06/10/2026
+
+- Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
+- Required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` trên source hiện tại → exit **2**; Ruff/Mypy pass, Pyright còn 3 `reportImportCycles` trong MCP client/session/registry. Vì task này yêu cầu gate tổng xanh, Task 03 vẫn **chưa accepted**; xem Task 07 để command/log đầy đủ.

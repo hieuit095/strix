@@ -120,3 +120,8 @@ Implementation verified, check-all baseline chưa đạt.
 - `uv run pytest tests/test_routing_jev.py tests/test_routing_router.py tests/test_cost_tracking.py -q`: exit 0, 94 passed, 2 baseline warnings (sau diff cuối).
 - Ruff format/check exit 0, mypy xanh. `make check-all`: exit 2, 910 Pyright baseline errors; một new UnnecessaryIsInstance đã sửa bằng tái dùng token validator cho attempts, không suppress rule. Log `/tmp/strix-hybrid-task04-check-all.log`.
 - Fake HTTP only, chưa gọi System One live. Không dependency/provider/ledger/service mới; ZDR guard nằm startup Task 02, budget guards ngoài router thuộc Task 05. Quality gate chưa tick.
+
+### Kiểm tra gate cuối trên source hiện tại — 06/10/2026
+
+- Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
+- Required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` trên source hiện tại → exit **2**; Ruff/Mypy pass, Pyright còn 3 `reportImportCycles` trong MCP client/session/registry. Vì task này yêu cầu gate tổng xanh, Task 04 vẫn **chưa accepted**; xem Task 07 để command/log đầy đủ.

@@ -121,3 +121,8 @@ make check-all
 RED thật: model selection/root binding/child context và binding-before-start thất bại trước implementation; JEV selection và budget-after/budget-before thất bại đúng assertion. Logs `/tmp/strix-hybrid-task05-jev-red.log`, `...-budget-after-red.log`, `...-budget-before-red.log`. Sau implementation cùng node xanh (exit 0). Bổ sung characterization nested parent→worker, ambiguous→specialist, current-cost stop/reserve/pause và after-JEV reserve.
 
 Nghiệm thu: `uv run pytest tests/test_routing_spawn.py tests/test_agent_graph_coordination.py tests/test_runner_root_prompt.py tests/test_budget_pause_policy.py tests/test_e2e_budget_lifecycle.py tests/test_agent_tool_registration.py -q` exit **0**, **76 passed**. `make check-all` exit **2**, Ruff/mypy pass, Pyright vẫn **910 baseline errors** (không lỗi mới), log `/tmp/strix-hybrid-task05-check-all.log`. Vì gate quality chưa đạt, chưa đánh dấu task hoàn thành. Tiếp tục 06 theo yêu cầu tuần tự; resume chưa được tuyên bố verified tại task này.
+
+### Kiểm tra gate cuối trên source hiện tại — 06/10/2026
+
+- Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
+- Required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` trên source hiện tại → exit **2**; Ruff/Mypy pass, Pyright còn 3 `reportImportCycles` trong MCP client/session/registry. Vì task này yêu cầu gate tổng xanh, Task 05 vẫn **chưa accepted**; xem Task 07 để command/log đầy đủ.
