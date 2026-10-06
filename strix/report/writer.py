@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import importlib
 import io
 import json
 import logging
@@ -12,7 +13,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from pygments.lexers import PythonLexer, get_lexer_by_name, guess_lexer
 from pygments.lexers.special import TextLexer
 from pygments.util import ClassNotFound
 
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from pygments.lexer import Lexer
 
 logger = logging.getLogger(__name__)
+_pygments_lexers: Any = importlib.import_module("pygments.lexers")
 
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
@@ -91,16 +92,16 @@ def resolve_lexer(language: str | None, code: str) -> Lexer:
     """
     if language:
         try:
-            return get_lexer_by_name(language)
+            return cast("Lexer", _pygments_lexers.get_lexer_by_name(language))
         except ClassNotFound:
             pass
     try:
-        lexer = guess_lexer(code)
+        lexer = cast("Lexer", _pygments_lexers.guess_lexer(code))
     except ClassNotFound:
-        return cast("Lexer", PythonLexer())
+        return cast("Lexer", _pygments_lexers.PythonLexer())
     # ``guess_lexer`` returns the plain-text lexer when it can't detect anything.
     if isinstance(lexer, TextLexer):
-        return cast("Lexer", PythonLexer())
+        return cast("Lexer", _pygments_lexers.PythonLexer())
     return lexer
 
 
@@ -108,7 +109,7 @@ def guess_language_name(code: str) -> str:
     """Return a markdown fence tag for ``code``, defaulting to ``python`` when
     auto-detection is inconclusive."""
     try:
-        lexer = guess_lexer(code)
+        lexer = _pygments_lexers.guess_lexer(code)
     except ClassNotFound:
         return "python"
     if isinstance(lexer, TextLexer) or not lexer.aliases:
@@ -126,7 +127,7 @@ def read_run_record(run_dir: Path) -> dict[str, Any]:
         raise RuntimeError(f"run.json at {path} is unreadable: {exc}") from exc
     if not isinstance(data, dict):
         raise TypeError(f"run.json at {path} is not an object")
-    return data
+    return cast("dict[str, Any]", data)
 
 
 def write_run_record(run_dir: Path, run_record: dict[str, Any]) -> None:
@@ -228,7 +229,7 @@ def render_vulnerability_md(report: dict[str, Any]) -> str:  # noqa: PLR0912, PL
         f"**Found:** {report.get('timestamp', 'unknown')}",
     ]
 
-    dep_meta = report.get("dependency_metadata") or {}
+    dep_meta = cast("dict[str, Any]", report.get("dependency_metadata") or {})
     metadata: list[tuple[str, Any]] = [
         ("Target", report.get("target")),
         ("Package", dep_meta.get("package_name")),
@@ -314,7 +315,8 @@ def render_vulnerability_md(report: dict[str, Any]) -> str:  # noqa: PLR0912, PL
 
     if report.get("code_locations"):
         lines.append("## Code Analysis\n")
-        for i, loc in enumerate(report["code_locations"]):
+        code_locations = cast("list[dict[str, Any]]", report["code_locations"])
+        for i, loc in enumerate(code_locations):
             file_ref = loc.get("file", "unknown")
             line_ref = ""
             if loc.get("start_line") is not None:
@@ -365,8 +367,10 @@ def render_update_history(history: Any) -> list[str]:
     """Render the audit trail of every revision a report has received."""
     if not isinstance(history, list):
         return []
-    entries: list[dict[str, Any]] = [
-        cast("dict[str, Any]", e) for e in history if isinstance(e, dict)
+    entries = [
+        cast("dict[str, Any]", entry)
+        for entry in cast("list[object]", history)
+        if isinstance(entry, dict)
     ]
     if not entries:
         return []
@@ -375,13 +379,13 @@ def render_update_history(history: Any) -> list[str]:
     for entry in entries:
         author = str(entry.get("agent_name") or entry.get("agent_id") or "an agent")
         raw_fields = entry.get("fields")
-        fields: list[Any] = raw_fields if isinstance(raw_fields, list) else []
+        fields: list[Any] = cast("list[object]", raw_fields) if isinstance(raw_fields, list) else []
         changed = ", ".join(str(field) for field in fields)
         timestamp = str(entry.get("timestamp") or "unknown")
         lines.append(f"**{timestamp}** — {author} updated: {changed}")
         raw_dropped = entry.get("dropped_fields")
         if isinstance(raw_dropped, list) and raw_dropped:
-            dropped = ", ".join(str(field) for field in raw_dropped)
+            dropped = ", ".join(str(field) for field in cast("list[object]", raw_dropped))
             lines.append(f"  Dropped as superseded: {dropped}")
         for key, label in (
             ("previous_severity", "severity"),
