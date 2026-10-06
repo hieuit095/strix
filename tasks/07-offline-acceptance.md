@@ -175,3 +175,9 @@ Environment diagnostic riêng: config Pyright tạm dưới /tmp giữ nguyên s
 ### Recheck after owner-authorized live target setup — 06/10/2026
 
 - `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **2**. Ruff format/check and mypy pass; Pyright reports **142 errors, 0 warnings**. Log: `/tmp/strix-current-check-all-after-viewer-fixes.log`. This target scan attempt did not satisfy a Task 07 gate; Task 07 remains **unaccepted** until its required offline gates pass.
+
+### Typing-only cleanup — 06/10/2026
+
+- `strix/agents/prompt.py` now gives the Jinja `get_skill` callback an explicit `str -> str` signature and casts Jinja's dynamically typed globals at the interop boundary. Runtime assignment and rendered prompt behavior are unchanged; this was characterization/typing work, not a new behavior requiring an artificial RED.
+- Regression: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_runner_root_prompt.py tests/test_skill_dir_extension.py -q` → exit **0**, **30 passed**. File-scoped `pyright`, `ruff check`, `ruff format --check`, and `mypy` each → exit **0**.
+- Repository `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **2**; Ruff format/check and mypy pass; Pyright reduced **142 → 138 errors**, 0 warnings. Log: `/tmp/strix-check-all-after-prompt.log`. Task 07 remains **unaccepted**; the entire repository gate must pass.

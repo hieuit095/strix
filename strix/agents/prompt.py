@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+
+if TYPE_CHECKING:
+    from collections.abc import MutableMapping
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -120,7 +124,11 @@ def render_system_prompt(
             is_diff_scoped=is_diff_scoped,
         )
         skill_content = load_skills(skills_to_load)
-        env.globals["get_skill"] = lambda name: skill_content.get(name, "")
+
+        def get_skill(name: str) -> str:
+            return skill_content.get(name, "")
+
+        cast("MutableMapping[str, Any]", env.globals)["get_skill"] = get_skill
 
         # Skills every agent of this kind loads come first, so siblings share them
         # as a cached prefix; the ones the caller asked for vary and go after.
