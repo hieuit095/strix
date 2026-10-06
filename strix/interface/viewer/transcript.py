@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from strix.core.paths import run_record_path
 from strix.interface.tui.live_view import TuiLiveView
@@ -21,7 +21,7 @@ _TERMINAL_STATUSES = {"completed", "stopped", "failed", "interrupted"}
 _KNOWN_SEVERITIES = ("critical", "high", "medium", "low")
 
 
-def severity_counts(vulns: list[Any]) -> dict[str, int]:
+def severity_counts(vulns: list[object]) -> dict[str, int]:
     """Bucket vulnerabilities into critical/high/medium/low counts.
 
     Mirrors the SPA's ``severityCounts``: severities are lowercased and
@@ -29,9 +29,9 @@ def severity_counts(vulns: list[Any]) -> dict[str, int]:
     ``informational``, ``unknown``, missing, ...) folds into ``low`` so the
     shared UI renders cleanly.
     """
-    counts = dict.fromkeys(_KNOWN_SEVERITIES, 0)
+    counts: dict[str, int] = dict.fromkeys(_KNOWN_SEVERITIES, 0)
     for vuln in vulns:
-        raw = vuln.get("severity") if isinstance(vuln, dict) else None
+        raw = cast("dict[str, Any]", vuln).get("severity") if isinstance(vuln, dict) else None
         severity = str(raw or "").lower().strip()
         if severity not in counts:
             severity = "low"
@@ -55,18 +55,20 @@ def read_run_summary(run_dir: Path) -> dict[str, Any]:
     record = _load_json(run_record_path(run_dir), default={})
     if not isinstance(record, dict):
         record = {}
-    status = record.get("status")
-    finished = status in _TERMINAL_STATUSES and bool(record.get("end_time"))
-    return {**record, "finished": finished}
+    run_record = cast("dict[str, Any]", record)
+    status = run_record.get("status")
+    finished = status in _TERMINAL_STATUSES and bool(run_record.get("end_time"))
+    return {**run_record, "finished": finished}
 
 
-def primary_target(record: dict[str, Any]) -> str | None:
+def primary_target(record: dict[str, object]) -> str | None:
     """The first target's original string from a run record, or None."""
     targets = record.get("targets_info")
     if isinstance(targets, list):
-        for entry in targets:
+        entries = cast("list[object]", targets)
+        for entry in entries:
             if isinstance(entry, dict):
-                original = entry.get("original")
+                original = cast("dict[str, Any]", entry).get("original")
                 if isinstance(original, str) and original:
                     return original
     return None
@@ -75,7 +77,7 @@ def primary_target(record: dict[str, Any]) -> str | None:
 def read_vulnerabilities(run_dir: Path) -> list[Any]:
     """The ``vulnerabilities.json`` list (empty until a scan writes it)."""
     data = _load_json(run_dir / "vulnerabilities.json", default=[])
-    return data if isinstance(data, list) else []
+    return cast("list[object]", data) if isinstance(data, list) else []
 
 
 def read_report_markdown(run_dir: Path) -> str:
@@ -87,7 +89,7 @@ def read_report_markdown(run_dir: Path) -> str:
         return ""
 
 
-def _load_json(path: Path, *, default: Any) -> Any:
+def _load_json(path: Path, *, default: object) -> object:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
