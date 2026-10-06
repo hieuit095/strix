@@ -1,0 +1,145 @@
+# Task 08 — Contract live, coverage/PoC và rollout có bằng chứng
+
+**Phụ thuộc:** 07. **Đọc:** RULES, plan §3/§5 Task 6/§7; README sử dụng từ 07.
+**Tạo test:** `tests/test_routing_live.py`. **Cập nhật:** biên bản task và README nếu kết quả live làm rõ hạn chế. Không production feature mới, không target mặc định.
+**Mục tiêu:** hoàn tất phần live trong plan; mock pass không thay thế API/tool/quality thực.
+
+## Gate 0 — Việc được phép trước khi có key/target
+
+- [x] Viết live tests và kiểm chứng gate skip **offline**. Không call API chỉ vì đọc task này. User yêu cầu tạo tasks chưa cho phép thực hiện scan/inference trả phí.
+- [x] Fixture opt-in rõ ràng:
+
+```python
+import os
+import pytest
+
+@pytest.fixture
+def commandcode_key() -> str:
+    if os.getenv("STRIX_ROUTING_LIVE_TESTS") != "1":
+        pytest.skip("live opt-in is disabled")
+    key = os.getenv("CMD_API_KEY")
+    if not key:
+        pytest.skip("CMD_API_KEY is unavailable")
+    return key
+```
+
+Không skip ở module import trước khi test runner biết số case; không skip khi opt-in+key có nhưng upstream lỗi. Network/auth/schema/tool failures sau gate phải FAIL. Không print key, don't include request body/headers in assertions error.
+- [x] Offline gating test trong test_routing_live.py monkeypatch delenv live flag/key, gọi fixture underlying function hoặc test pytester pattern sẵn có, assert skip exception trước HTTP. Kết quả đây chỉ xác nhận gating.
+
+## Gate 1 — Account, policy, price và target
+
+- [ ] Có người dùng cho phép live inference/scan, key API quyền model/credit, và target/fixture được phép. Ghi phạm vi không secret. Không mua credit hoặc thay gói.
+- [ ] Xác nhận policy JEV metadata không ZDR; nếu không cho phép, live spawn floor-only có thể chạy nhưng gate **live JEV chưa complete**, không tick toàn plan.
+- [ ] GET `https://api.commandcode.ai/provider/v1/models` bằng httpx với timeout; kiểm model IDs plan §3.2 và supported_endpoints. Nếu thay đổi, cập nhật test inputs/docs có ngày, không silently substitute model.
+- [x] Kiểm pricing resolver cho exact Strix IDs và JEV: gọi `resolve_litellm_model`/`LLMUsageLedger.record` trên Usage tổng hợp input=1000/output=100. Báo giá unknown nếu resolve None hoặc estimate==0 với rate trả phí; không dùng “$0” để mở gate budget.
+- [ ] Khi giá chưa có: chỉ dùng `litellm.register_model` có sẵn và reviewed rates trong **process chạy test/scan**, clear resolver cache sau register. Không sửa pricing engine/ledger. Mapping phải gồm input_cost_per_token=rate_per_million/1e6, output_cost_per_token, cache_read_input_token_cost và litellm_provider đúng route estimator; chạy lại Usage estimate test. Đăng ký không ghi đè capability flags/reasoning/tool support của existing model entry: merge entry cũ trước override các price fields.
+- [ ] Nếu phải inject rates để scan CLI dùng được, dùng script cục bộ ngoài tracked production: load reviewed JSON, register_model, cache_clear, set sys.argv như CLI rồi gọi `strix.interface.main.main()` **trong cùng process**. Không register trong process A rồi launch subprocess B và cho rằng B đã nhận giá. Script/JSON operator giữ local, không SDK/config field mới.
+- [ ] Giá tham khảo plan là snapshot ngày 05/10/2026, xem lại nguồn chính thức trước dùng. Nếu giá không xác minh được, gate live-budget chưa đạt; dừng phần phụ thuộc, giữ offline deliverable.
+
+## Chu trình A — Synthetic API contracts
+
+Đây là kiểm chứng tích hợp; không bắt dịch vụ thật thất bại để “làm TDD”. Parser/helper behavior đã có RED/GREEN offline ở 02/04. Mỗi live failure là gate thực phải sửa có regression offline trước gọi lại.
+
+- [x] Parametrize **3 model × 2 modes** (stream/nonstream), theo Config thật chung CommandCode. Dùng StrixProvider và make_model_settings, không HTTP chat client riêng bỏ qua Strix wrappers.
+- [ ] Text request `"Return the text routing-smoke-ok. This is synthetic data."`; assert có text/response model hợp lệ và usage input/output, không assert token count cố định.
+- [x] Tool contract sử dụng `build_strix_agent(is_root=False, skills=['rce'], scan_mode='quick', chat_completions_tools=True, strict_tool_schemas=<validated flag>, extra_tools=[echo])`. `echo` là test-only FunctionTool qua decorator sẵn có, argument value:str, return value; không production tool mới.
+- [x] Dùng toàn bộ tool declarations của agent thực, không lấy `[echo]` thay toolset; sandbox/filesystem/shell capabilities cần SDK sandbox tool materialization giống runner. Đọc test_agent_factory_tool_arguments.py/runner SandboxRunConfig. Nếu chưa materialize đầy đủ, gate full-tool contract vẫn chưa đạt; không đánh dấu chỉ dựa echo-alone.
+- [ ] Model prompt yêu cầu call echo với value='synthetic', không Runner tự thực thi tools nguy hiểm. Dùng model.get_response/stream_response với declarations đã materialize; capture function_call echo và arguments, invoke **chỉ** echo test để round-trip tổng hợp. Nếu model gọi tool khác, không thực thi, test fail có sanitized tool name. Không disable production tools để đạt pass.
+- [ ] Streaming cuối có usage; nonstream response có usage; function schema/tool IDs/roles hợp lệ. Giữ reasoning/required-tool/cache settings của người dùng; unsupported parameter phải báo, không tự tắt để pass.
+- [ ] Một live JEV request Envelope synthetic theo adapter 04; assert finite distribution/schema/usage; request content allowlist, không secret.
+- [ ] Lệnh live:
+
+```bash
+STRIX_ROUTING_LIVE_TESTS=1 uv run pytest tests/test_routing_live.py -q
+```
+
+Key có sẵn ở environment, không viết literal vào shell/history/report. File phải luôn giữ network opt-in rõ ràng. Giới hạn số request theo matrix trên, không rerun toàn matrix khi chỉ một case lỗi đã được sửa.
+
+## Chu trình B — So với baseline giữ chất lượng pentest
+
+- [ ] Chọn cùng một fixture được người dùng duyệt có ground truth: ít nhất một finding cần discovery→validation→report/PoC và một nhánh high-impact/ambiguous tạo child. Nếu fixture không tạo routed child, chưa kiểm chứng multi-model dù scan pass.
+- [ ] Ghi target chuẩn, expected findings/PoC, authorized scope, git commit fixture, scan_mode quick, model/key/base/settings/budget; chỉ sanitize secret, không bỏ metadata cần tái hiện.
+- [ ] Ba runs cùng fixture/settings/scan mode/max-budget: routing off; routing on JEV off; routing on JEV on. Dùng `-n` luôn:
+
+```bash
+uv run strix -n -t "$AUTHORIZED_FIXTURE_TARGET" --scan-mode quick --max-budget 5
+```
+
+`AUTHORIZED_FIXTURE_TARGET` phải do người dùng xác định. Chỉnh routing flags trong env cho từng run, không target tự điền. Nếu rate injection cần thiết, chạy CLI cùng-process script Gate 1 với các arguments tương đương, không bỏ budget.
+- [ ] Giữ nguyên reasoning, max-turns, prompts, skills, tools, target scope giữa runs. Xác nhận `run.json` status/usage/model records, logs routing tier/model/reason và agents snapshot. Budget exhaustion hoặc scan incomplete không được gọi “clean”.
+- [ ] Bảng biên bản mỗi run: status, tasks/branches complete, confirmed ground-truth findings, missing findings, false positives, reproducible PoC, coverage, elapsed, tokens/cache, estimate, dashboard charge nếu đọc được. Không phát minh fee khi dashboard chưa đọc.
+- [ ] Bất kỳ required ground-truth finding/PoC mất trong routing thì gate fail; tái hiện thêm **case đó** và xem nguyên nhân model/config/router, không giảm ground truth hoặc feature để đạt pass. Một bộ fixture pass là evidence bounded, không chứng minh mọi pentest tương đương.
+- [ ] Resume một routed scan đã có child session: exact model restored, không JEV reroute child cũ, counters không reset; kiểm snapshot/logs thật, không phải chỉ assertions mock.
+
+## Chu trình C — Rollout/rollback
+
+- [ ] Chỉ sau gates trên: candidate release với flag off → internal floor-only → JEV metadata enabled khi policy cho phép. Merge/deploy chỉ nếu session cho phép; task không tự authorize chúng.
+- [x] Rollback scan mới `STRIX_ROUTING_ENABLED=false`; không dùng flag để đổi model session scan cũ. Resume cần saved bindings/cùng gateway, có hướng dẫn README.
+- [ ] Review final diff không thêm features để hỗ trợ rollout; source of truth vẫn plan.
+
+## Nghiệm thu cuối toàn plan
+
+- [ ] Task 00–07 có bằng chứng offline, 08 có live contract/quality/resume thật.
+- [ ] Gates account/policy/price/authorized target đều đạt hoặc plan vẫn được báo incomplete ở phần phụ thuộc.
+- [ ] Ground truth findings/PoC/coverage đạt, không rút ngắn năng lực Strix.
+- [ ] DoD plan §7 tick bằng links evidence, không bằng skip/mock.
+
+## Biên bản hoàn thành
+
+**Offline deliverable đã triển khai; live rollout BLOCKED, chưa hoàn thành live.** Không tick acceptance toàn plan bằng skip/mock.
+
+Files: tests/test_routing_live.py, docs/routing/README.md, biên bản 07/08 và tasks/README status. Không production feature/dependency/module mới ở 08. Hai operator-local files `/tmp/strix-hybrid-reviewed-rates.json` và `/tmp/strix-hybrid-rate-runner.py` không tracked, không tự inference/scan khi chạy audit.
+
+### Gate 0 và synthetic harness offline
+
+- Fixture opt-in `STRIX_ROUTING_LIVE_TESTS=1` và `CMD_API_KEY`; không module-level skip. JEV còn yêu cầu `STRIX_ROUTING_LIVE_JEV_ALLOWED=1` sau policy review; ZDR header vẫn bị validation từ chối, không gỡ header. Không dùng key thật trong offline tests.
+- 13 cases live collected: 3 models × stream/nonstream × text/full-tool = 12, JEV = 1. Catalog GET timeout trước inference; model IDs/endpoints exact, không substitute. Shared AsyncOpenAI client qua StrixProvider, native prefix/wire assertions; make_model_settings giữ reasoning/tool/cache/timeout/headers của user. HTTP retry=0; không Runner thực thi tool nguy hiểm.
+- Real build_strix_agent với skills rce/quick, real SDK clone/bind/prepare_sandbox_agent và Converter.tool_to_openai materialize **49 declarations**, gồm view_image/apply_patch/exec_command/write_stdin. Declaration-only session không Docker/I/O; tools còn nguyên, strictness giữ đúng intentional non-strict baseline (không ép toàn bộ strict). Chỉ async test echo được invoke qua ToolContext thật; không execute capability tools.
+- Offline gates kiểm skip trước HTTP khi thiếu opt-in/key, opt-in+dummy key+401 phải raise HTTPStatusError (không skip), 3 full declarations/SDK wire conversion, 6 sampler mode/model forwarding và shared client. Characterization/harness verification; không gọi fixture lỗi PTY/ToolContext ban đầu là RED behavior. Không hạ assertion production hoặc tests cũ.
+- `LITELLM_LOCAL_MODEL_COST_MAP=True UV_CACHE_DIR=/tmp/strix-uv-cache timeout 35s uv run --offline pytest tests/test_routing_live.py -q`: exit 0, **14 passed, 13 skipped**. Skips chỉ 13 live cases, không là evidence upstream.
+- `LITELLM_LOCAL_MODEL_COST_MAP=True UV_CACHE_DIR=/tmp/strix-uv-cache timeout 40s uv run --offline pytest tests/test_routing_live.py tests/test_routing_jev.py tests/test_routing_router.py tests/test_routing_spawn.py::test_routing_preserves_scan_and_factory_options tests/test_routing_runconfig.py::test_real_agents_keep_prompts_tools_and_capabilities -q`: exit 0, **97 passed, 13 skipped**, 3.17s; `/tmp/strix-hybrid-task08-offline.log`.
+- `UV_CACHE_DIR=/tmp/strix-uv-cache make check-all`: exit 2; Ruff format/check và mypy pass, Pyright 4479 errors/29 warnings trong permission profile mới (dependency import resolution) ngoài baseline 910 trước đó. `/tmp/strix-hybrid-task08-check-all.log`. Không hạ config/noqa để xanh.
+
+### Gate 1: trạng thái thật
+
+| Gate | Bằng chứng / prerequisite chính xác |
+|---|---|
+| Key/account | `CMD_API_KEY` hiện diện trong env (chỉ kiểm presence, không in value); **quyền model/credits chưa xác minh**. Không mua credits. |
+| Network/catalog | Public GET bằng httpx timeout 5 giây exit **1**, ConnectError. Web tool cũng không đọc được catalog JSON. Cần network/DNS tới api.commandcode.ai và response model IDs/supported_endpoints hiện hành. |
+| JEV policy | **BLOCKED:** owner chưa xác nhận metadata không ZDR được phép. Không đặt policy opt-in hoặc tự bỏ x-cmd-zdr. |
+| Pricing | Đã review bảng chính thức ngày 06/10/2026, đã audit và registration local; **billing/account charge chưa xác minh**. Không claim zero/free. |
+| Authorized target/ground truth | **BLOCKED:** không có AUTHORIZED_FIXTURE_TARGET hoặc target do owner xác định, scope, fixture commit, expected findings/PoC và nhánh routed child. Không suy từ repo URLs. |
+| Offline prerequisite 07 | **FAILED/UNACCEPTED:** inherited Pyright gate và environment async thread/subprocess discovery; không gọi baseline code failure là external credential blocker. |
+| Commits | **BLOCKED:** .git read-only, git add/commit exit 128 từ Task 07. HEAD vẫn 061646b/feat/hybrid-router, không push. |
+
+Pricing: gọi resolve_litellm_model/LLMUsageLedger.record với Usage input=1000/output=100. Bundled local map trả None/estimate=0 cho cả bốn IDs; trước đó map remote đã resolve ba model nhưng không JEV, vẫn chưa khớp gateway. Không dùng zero mở budget gate.
+
+Đọc lại [Pricing & Limits](https://commandcode.ai/docs/resources/pricing-limits) và [Provider API](https://commandcode.ai/docs/provider): bảng rates matches plan; DeepSeek peak/off-peak theo giờ/weekday. Operator-local JSON dùng peak input/output 0.30/1.20 và cache 0.003; MiMo 0.435/0.87/cache 0.0036; GPT 2/10/cache 0.10; JEV 0.042/0/cache 0 (USD/1M). Không sửa pricing engine/ledger.
+
+`UV_CACHE_DIR=/tmp/strix-uv-cache uv run --offline python /tmp/strix-hybrid-rate-runner.py` ban đầu exit 1: raw provider names không đủ cho LiteLLM resolver. Registration bằng existing resolved key hoặc explicit openai-qualified estimator key, merge existing entry trước override chỉ prices, giữ capability/provider/mode fields, clear cache; rerun cùng command exit **0**. Synthetic estimates: worker **0.000420**, specialist **0.000522**, expert **0.003000**, JEV **0.000042** USD. Đây chỉ estimator trong process, không gateway charge. Local script có explicit --run-scan + authorized-target prerequisite, gọi CLI trong cùng process khi operator đủ gates; audit hiện tại không scan.
+
+### Live runs / quality / resume / rollout
+
+| Run | Trạng thái | Findings/PoC/coverage/tokens/charge |
+|---|---|---|
+| Routing off | BLOCKED: account/network/authorized fixture và full offline gate | Chưa chạy, không có số liệu |
+| Floor-only | BLOCKED: cùng prerequisites | Chưa chạy, không có số liệu |
+| JEV enabled | BLOCKED: cùng prerequisites + policy non-ZDR | Chưa chạy, không có số liệu |
+| Routed resume thật | BLOCKED: cần routed scan/session/fixture live đã chạy | Chưa chạy; offline resume chỉ là bằng chứng Task 06 |
+
+Rollout/merge/deploy không thực hiện khi gates chưa đạt. Rollback scan mới bằng STRIX_ROUTING_ENABLED=false đã document; không dùng flag đổi model session cũ. Final diff có thêm test/docs trong phạm vi task, ngoài JEV regression đã xử lý Task 04. Chưa đánh dấu Task 08 hay toàn plan complete. Owner cần restore Git writable + test environment, giải quyết baseline quality gate, cấp network/account/fixture và policy rồi chạy chính matrix/runs đã implement.
+
+Final full-suite rerun exit **124** ở environment async/thread handoff, log `/tmp/strix-hybrid-final-full-suite.log`; không bỏ required tests. Final Ruff format/check và diff whitespace exit 0. JEV usage cho phép nonnegative zero theo adapter contract; generative text/tool smoke yêu cầu positive input/output tokens.
+
+
+Bổ sung cuối: catalog fixture kiểm exact 3 text IDs + JEV và đúng Chat Completions/System One supported_endpoints; fake 200 missing model/endpoint phải fail. Harness command exit 0, **18 passed/13 live skipped**; combined offline command đã ghi ở trên rerun exit 0, **101 passed/13 live skipped** (catalog characterization thêm 4 cases). `/tmp/strix-hybrid-task08-offline.log`. Giữ kết quả 14/97 trước đó như lịch sử, không thay nó thành số chưa chạy. Final Ruff format/check và git diff --check exit 0.
+
+### Kết quả hiện hành 06/10/2026
+
+- Catalog GET bằng httpx tới `https://api.commandcode.ai/provider/v1/models`, timeout 5s, exit **0**, HTTP 200; chỉ ghi key presence, không ghi key value/body nhạy cảm. Ba model wire ID hiện diện với `/chat/completions` và `/responses`: `deepseek/deepseek-v4.1-flash`, `xiaomi/mimo-v2.6-pro`, `gpt-6.1-sol`. `typesafe/jev` **không hiện diện**.
+- Do thiếu JEV đã cô lập test catalog: chat model live contracts kiểm tra ba model riêng; JEV contract vẫn kiểm tra đúng JEV/System One và fail rõ ràng nếu vắng. Offline `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_live.py -q` sau refactor → exit **0**, **20 passed, 13 skipped**, 2.48s.
+- JEV preflight thật: `STRIX_ROUTING_LIVE_TESTS=1 UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_live.py::test_live_jev_contract -q` → exit **1**, fixture setup assertion `JEV absent from current catalog`, 1 error, 1.30s. Không gửi JEV inference.
+- Chat matrix thật (6 text + 6 full-tool, stream/nonstream): `STRIX_ROUTING_LIVE_TESTS=1 UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 180s uv run --offline pytest tests/test_routing_live.py -k 'live_text_contract or live_full_tool_contract' -q` → exit **1**, **8 passed, 4 failed**, 38.75s. DeepSeek and MiMo passed 8/8. Tất cả 4 GPT-6.1 cases return HTTP 403 `MODEL_NOT_IN_PLAN`: requires Max plan or extra on-demand usage. No further GPT retries and no purchase.
+- Account key exists in environment but only DeepSeek/MiMo access was verified by successful requests. GPT entitlement/credits unavailable. No JEV non-ZDR policy authorization. No owner-provided authorized target/ground truth, so routing-off/floor-only/JEV scan comparison and routed live resume were not run. These are distinct blockers, not inferred successful quality checks.
+- `catalog()` now validates only the three chat models so JEV absence does not prevent unrelated chat contracts; the `test_live_jev_contract` still enforces JEV existence and System One endpoint. This is an in-scope live test harness change, no production code.
+- Task 08 remains **live rollout incomplete**. Gate 1 and real target-quality/resume/rollout checks remain open; successful synthetic provider contracts do not satisfy quality parity.
