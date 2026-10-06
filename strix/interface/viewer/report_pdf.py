@@ -18,7 +18,7 @@ import re
 import secrets
 from datetime import datetime
 from io import BytesIO
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from markdown_it import MarkdownIt
 from pypdf import PdfReader, PdfWriter
@@ -96,12 +96,12 @@ class _NumberedCanvas(pdfcanvas.Canvas):  # type: ignore[misc]  # reportlab base
     """Two-pass canvas that prints 'Page X of Y' on every page after the cover."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+        cast("Any", super()).__init__(*args, **kwargs)
         self._saved_states: list[dict[str, Any]] = []
 
     def showPage(self) -> None:  # noqa: N802 - reportlab API
         self._saved_states.append(dict(self.__dict__))
-        self._startPage()
+        cast("Any", super())._startPage()
 
     def save(self) -> None:
         total = len(self._saved_states)
@@ -567,7 +567,7 @@ def _finding_flowables(
     title = vuln.get("title") or "Untitled finding"
     severity = _normalize_severity(vuln.get("severity"))
 
-    meta_bits = []
+    meta_bits: list[str] = []
     if vuln.get("cvss") is not None:
         meta_bits.append(f"<b>CVSS</b> {_esc(vuln.get('cvss'))}")
     meta_bits.extend(
@@ -595,7 +595,7 @@ def _finding_flowables(
 
     remediation = vuln.get("remediation_steps")
     if isinstance(remediation, list):
-        remediation = "\n".join(str(step) for step in remediation)
+        remediation = "\n".join(str(step) for step in cast("list[object]", remediation))
     story.extend(_field_block(styles, "Remediation", remediation))
 
     story.append(Spacer(1, 22))
@@ -615,7 +615,8 @@ def _overview_flowables(
     scan_results = record.get("scan_results")
     if not isinstance(scan_results, dict):
         return story
-    summary = scan_results.get("executive_summary")
+    scan_result_fields = cast("dict[str, Any]", scan_results)
+    summary = scan_result_fields.get("executive_summary")
     if isinstance(summary, str) and summary.strip():
         story.append(Spacer(1, 16))
         story.extend(_markdown_flowables(_strip_leading_heading(summary), styles))
@@ -624,7 +625,7 @@ def _overview_flowables(
         ("Technical Analysis", "technical_analysis"),
         ("Recommendations", "recommendations"),
     ):
-        value = scan_results.get(key)
+        value = scan_result_fields.get(key)
         if isinstance(value, str) and value.strip():
             story.append(Spacer(1, 20))
             story.append(_section(styles, label))
@@ -636,8 +637,12 @@ def _overview_flowables(
 def generate_report_pdf(run_dir: Path) -> bytes:
     """Render a branded, full-detail PDF report for the run at ``run_dir``."""
     record = read_run_summary(run_dir)
-    vulns = [v for v in read_vulnerabilities(run_dir) if isinstance(v, dict)]
-    counts = severity_counts(vulns)
+    vulns = [
+        cast("dict[str, object]", vulnerability)
+        for vulnerability in read_vulnerabilities(run_dir)
+        if isinstance(vulnerability, dict)
+    ]
+    counts = severity_counts(cast("list[object]", vulns))
     run_name = str(record.get("run_name") or run_dir.name)
 
     styles = _styles()
