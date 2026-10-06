@@ -10,7 +10,7 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 import requests
@@ -108,10 +108,10 @@ def format_vulnerability_report(report: dict[str, Any]) -> Text:  # noqa: PLR091
         text.append("CVE: ", style=field_style)
         text.append(cve)
 
-    cvss_breakdown = report.get("cvss_breakdown", {})
+    cvss_breakdown = cast("dict[str, Any]", report.get("cvss_breakdown", {}) or {})
     if cvss_breakdown:
         text.append("\n\n")
-        cvss_parts = []
+        cvss_parts: list[str] = []
         if cvss_breakdown.get("attack_vector"):
             cvss_parts.append(f"AV:{cvss_breakdown['attack_vector']}")
         if cvss_breakdown.get("attack_complexity"):
@@ -132,7 +132,7 @@ def format_vulnerability_report(report: dict[str, Any]) -> Text:  # noqa: PLR091
             text.append("CVSS Vector: ", style=field_style)
             text.append("/".join(cvss_parts), style="dim")
 
-    dependency_metadata = report.get("dependency_metadata") or {}
+    dependency_metadata = cast("dict[str, Any]", report.get("dependency_metadata") or {})
     if dependency_metadata:
         contextual_vector = dependency_metadata.get("contextual_cvss_vector")
         if contextual_vector:
@@ -228,18 +228,19 @@ def format_vulnerability_report(report: dict[str, Any]) -> Text:  # noqa: PLR091
 
 
 def _build_vulnerability_stats(stats_text: Text, report_state: Any) -> None:
-    vuln_count = len(report_state.vulnerability_reports)
+    reports = cast("list[dict[str, Any]]", report_state.vulnerability_reports)
+    vuln_count = len(reports)
 
     if vuln_count > 0:
         severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
-        for report in report_state.vulnerability_reports:
+        for report in reports:
             severity = report.get("severity", "").lower()
             if severity in severity_counts:
                 severity_counts[severity] += 1
 
         stats_text.append("Vulnerabilities  ", style="bold red")
 
-        severity_parts = []
+        severity_parts: list[Text] = []
         for severity in ["critical", "high", "medium", "low", "info"]:
             count = severity_counts[severity]
             if count > 0:
@@ -268,9 +269,10 @@ def _build_vulnerability_stats(stats_text: Text, report_state: Any) -> None:
 def _llm_usage(report_state: Any) -> dict[str, Any]:
     if hasattr(report_state, "get_total_llm_usage"):
         usage = report_state.get_total_llm_usage()
-        return usage if isinstance(usage, dict) else {}
-    usage = getattr(report_state, "run_record", {}).get("llm_usage")
-    return usage if isinstance(usage, dict) else {}
+        return cast("dict[str, Any]", usage) if isinstance(usage, dict) else {}
+    run_record = cast("dict[str, Any]", getattr(report_state, "run_record", {}))
+    usage = run_record.get("llm_usage")
+    return cast("dict[str, Any]", usage) if isinstance(usage, dict) else {}
 
 
 def is_subscription_run(report_state: Any) -> bool:
@@ -279,9 +281,11 @@ def is_subscription_run(report_state: Any) -> bool:
     Prefers the run record so it's correct for hydrated/resumed runs; falls back
     to current settings.
     """
-    record = getattr(report_state, "run_record", None)
-    if isinstance(record, dict) and record.get("auth_mode"):
-        return record.get("auth_mode") == "subscription"
+    record: Any = getattr(report_state, "run_record", None)
+    if isinstance(record, dict):
+        typed_record = cast("dict[str, Any]", record)
+        if typed_record.get("auth_mode"):
+            return typed_record.get("auth_mode") == "subscription"
     from strix.config import codex
 
     return codex.auth_mode(load_settings().llm.model) == "subscription"
@@ -305,10 +309,12 @@ def _float_stat(usage: dict[str, Any], key: str) -> float:
 def _detail_value(usage: dict[str, Any], detail_key: str, value_key: str) -> int:
     details = usage.get(detail_key)
     if isinstance(details, list):
-        details = details[0] if details and isinstance(details[0], dict) else {}
+        details = (
+            cast("dict[str, Any]", details[0]) if details and isinstance(details[0], dict) else {}
+        )
     if not isinstance(details, dict):
         return 0
-    return _int_stat(details, value_key)
+    return _int_stat(cast("dict[str, Any]", details), value_key)
 
 
 def has_model_response(report_state: Any) -> bool:
@@ -391,18 +397,19 @@ def build_live_stats_text(report_state: Any) -> Text:
         stats_text.append("ChatGPT subscription", style="#22c55e")
     stats_text.append("\n")
 
-    vuln_count = len(report_state.vulnerability_reports)
+    reports = cast("list[dict[str, Any]]", report_state.vulnerability_reports)
+    vuln_count = len(reports)
     stats_text.append("Vulnerabilities ", style="dim")
     stats_text.append(f"{vuln_count}", style="white")
     stats_text.append("\n")
     if vuln_count > 0:
         severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
-        for report in report_state.vulnerability_reports:
+        for report in reports:
             severity = report.get("severity", "").lower()
             if severity in severity_counts:
                 severity_counts[severity] += 1
 
-        severity_parts = []
+        severity_parts: list[Text] = []
         for severity in ["critical", "high", "medium", "low", "info"]:
             count = severity_counts[severity]
             if count > 0:
@@ -475,11 +482,11 @@ def _derive_target_label_for_run_name(targets_info: list[dict[str, Any]] | None)
 
     first = targets_info[0]
     target_type = first.get("type")
-    details = first.get("details", {}) or {}
-    original = first.get("original", "") or ""
+    details = cast("dict[str, Any]", first.get("details", {}) or {})
+    original = cast("str", first.get("original", "") or "")
 
     if target_type == "web_application":
-        url = details.get("target_url", original)
+        url = cast("str", details.get("target_url", original))
         try:
             parsed = urlparse(url)
             return str(parsed.netloc or parsed.path or url)
@@ -487,7 +494,7 @@ def _derive_target_label_for_run_name(targets_info: list[dict[str, Any]] | None)
             return str(url)
 
     if target_type == "repository":
-        repo = details.get("target_repo", original)
+        repo = cast("str", details.get("target_repo", original))
         parsed = urlparse(repo)
         path = parsed.path or repo
         name = path.rstrip("/").split("/")[-1] or path
@@ -496,7 +503,7 @@ def _derive_target_label_for_run_name(targets_info: list[dict[str, Any]] | None)
         return str(name)
 
     if target_type == "local_code":
-        path_str = details.get("target_path", original)
+        path_str = cast("str", details.get("target_path", original))
         try:
             return str(Path(path_str).name or path_str)
         except Exception:
@@ -508,7 +515,7 @@ def _derive_target_label_for_run_name(targets_info: list[dict[str, Any]] | None)
     if target_type == "api_spec":
         if details.get("source") == "postman_api":
             return "postman-collection"
-        spec_path = details.get("target_spec", original)
+        spec_path = cast("str", details.get("target_spec", original))
         try:
             return str(Path(spec_path).stem or spec_path)
         except Exception:
@@ -530,6 +537,14 @@ _SUPPORTED_SCOPE_MODES = {"auto", "diff", "full"}
 _MAX_FILES_PER_SECTION = 120
 
 
+def _new_truncation_sections() -> dict[str, bool]:
+    return {}
+
+
+def _new_diff_metadata() -> dict[str, Any]:
+    return {}
+
+
 @dataclass
 class DiffEntry:
     status: str
@@ -549,7 +564,7 @@ class RepoDiffScope:
     renamed_files: list[dict[str, Any]]
     deleted_files: list[str]
     analyzable_files: list[str]
-    truncated_sections: dict[str, bool] = field(default_factory=dict)
+    truncated_sections: dict[str, bool] = field(default_factory=_new_truncation_sections)
 
     def to_metadata(self) -> dict[str, Any]:
         return {
@@ -576,7 +591,7 @@ class DiffScopeResult:
     active: bool
     mode: str
     instruction_block: str = ""
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=_new_diff_metadata)
 
 
 def _run_git_command(
@@ -918,7 +933,7 @@ def build_diff_scope_instruction(scopes: list[RepoDiffScope]) -> str:
                 )
 
         if scope.renamed_files:
-            rename_lines = []
+            rename_lines: list[str] = []
             for rename in scope.renamed_files:
                 old_path = rename.get("old_path") or "unknown"
                 new_path = rename.get("new_path") or "unknown"
@@ -1131,7 +1146,7 @@ def _is_http_git_repo(url: str) -> bool:
 
 
 def infer_target_type(target: str) -> tuple[str, dict[str, str]]:  # noqa: PLR0911
-    if not target or not isinstance(target, str):
+    if not target:
         raise ValueError("Target must be a non-empty string")
 
     target = target.strip()
@@ -1444,7 +1459,7 @@ def dedupe_local_targets(targets_info: list[dict[str, Any]]) -> list[dict[str, A
     result: list[dict[str, Any]] = []
     seen_paths: set[str] = set()
     for target in targets_info:
-        details = target.get("details") or {}
+        details = cast("dict[str, Any]", target.get("details") or {})
         path = details.get("target_path")
         if target.get("type") != "local_code" or not path:
             result.append(target)
@@ -1463,14 +1478,9 @@ def _is_localhost_host(host: str) -> bool:
 
     try:
         ip = ipaddress.ip_address(host_lower)
-        if isinstance(ip, ipaddress.IPv4Address):
-            return ip.is_loopback  # 127.0.0.0/8
-        if isinstance(ip, ipaddress.IPv6Address):
-            return ip.is_loopback  # ::1
     except ValueError:
-        pass
-
-    return False
+        return False
+    return ip.is_loopback
 
 
 def rewrite_localhost_targets(targets_info: list[dict[str, Any]], host_gateway: str) -> None:
@@ -1702,6 +1712,7 @@ def validate_config_file(config_path: str) -> Path:
     if not isinstance(data, dict):
         console.print("[bold red]Error:[/] Config file must contain a JSON object")
         sys.exit(1)
+    data = cast("dict[str, Any]", data)
 
     if "env" not in data or not isinstance(data.get("env"), dict):
         console.print("[bold red]Error:[/] Config file must have an 'env' object")

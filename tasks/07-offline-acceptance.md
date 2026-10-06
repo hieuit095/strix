@@ -135,4 +135,9 @@ Environment diagnostic riêng: config Pyright tạm dưới /tmp giữ nguyên s
 - `strix/report/coverage.py` now narrows saved graph/coverage JSON fields at existing guards without changing the source or gap semantics. `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 180s uv run --offline pytest tests/test_report_coverage.py tests/test_report_writer.py tests/test_reporting_fields.py tests/test_sarif.py -q` → exit **0**, **155 passed**. File-scoped Ruff, format, mypy, and Pyright pass.
 - Latest `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **2**; Ruff/mypy pass, Pyright now **438 errors**. Task 07 remains unaccepted.
 
-Pending commit groups khi Git writable: (1) JEV choice parser + test/Task04 record; (2) preservation tests + docs/routing + Task07 record; (3) live harness + Task08/README evidence. Không tạo commit giả ở alternate Git directory hoặc push để bypass read-only .git.
+### More baseline typing cleanup — 06/10/2026
+
+- `strix/interface/utils.py` now types existing CVSS/dependency metadata, run usage/status payloads, target-name values, diff metadata/default factories, and rename output at their current boundaries. The localhost helper uses the same `ip.is_loopback` value after successful parsing for both address families; invalid input still returns false. No prompt, routing, target-selection, or rendering behavior was intentionally changed.
+- `UV_CACHE_DIR=/tmp/strix-uv-cache uv run --offline ruff check strix/interface/utils.py` → exit **0**; `UV_CACHE_DIR=/tmp/strix-uv-cache uv run --offline ruff format --check strix/interface/utils.py` → exit **0**; file-scoped mypy and pyright → exit **0**, 0 errors.
+- `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 180s uv run --offline pytest tests/test_local_sources.py tests/test_api_spec_targets.py tests/test_workspace_files.py -q` → exit **0**, **53 passed**.
+- `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **2**; Ruff format/check and mypy pass, Pyright reports **356 errors**. The whole repository gate is still red; this slice does not satisfy Task 07.
