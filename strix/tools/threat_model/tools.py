@@ -25,7 +25,7 @@ import tempfile
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 from agents import RunContextWrapper, function_tool
@@ -228,11 +228,12 @@ def hydrate_threat_models_from_disk(state_dir: Path) -> None:
             return
         if not isinstance(data, dict):
             return
+        data = cast("dict[str, Any]", data)
         _MODELS.update(
             {
-                identity: model
+                identity: cast("dict[str, Any]", model)
                 for identity, model in data.items()
-                if isinstance(identity, str) and isinstance(model, dict)
+                if isinstance(model, dict)
             }
         )
         logger.info("threat models hydrated from %s (%d)", _store_path, len(_MODELS))
@@ -275,7 +276,8 @@ def _amendments_of(model: dict[str, Any]) -> list[dict[str, Any]]:
     raw = model.get("amendments")
     if not isinstance(raw, list):
         return []
-    return [item for item in raw if isinstance(item, dict)]
+    amendments: list[Any] = cast("Any", raw)
+    return [cast("dict[str, Any]", item) for item in amendments if isinstance(item, dict)]
 
 
 def _not_found(identity: str) -> dict[str, Any]:
@@ -460,7 +462,8 @@ def _amend_impl(
 
 
 def _caller_agent_name(ctx: RunContextWrapper) -> str | None:
-    inner = ctx.context if isinstance(ctx.context, dict) else {}
+    context: Any = ctx.context
+    inner = cast("dict[str, Any]", context) if isinstance(context, dict) else {}
     agent_id = inner.get("agent_id")
     coordinator = inner.get("coordinator")
     if not isinstance(agent_id, str) or not isinstance(coordinator, AgentCoordinator):
@@ -470,11 +473,13 @@ def _caller_agent_name(ctx: RunContextWrapper) -> str | None:
 
 def _scan_targets(ctx: RunContextWrapper) -> list[str]:
     """The targets this scan was authorized against, as the runner spelled them."""
-    inner = ctx.context if isinstance(ctx.context, dict) else {}
+    context: Any = ctx.context
+    inner = cast("dict[str, Any]", context) if isinstance(context, dict) else {}
     targets = inner.get("scan_targets")
     if not isinstance(targets, list):
         return []
-    return [target for target in targets if isinstance(target, str) and target.strip()]
+    target_values: list[Any] = cast("Any", targets)
+    return [target for target in target_values if isinstance(target, str) and target.strip()]
 
 
 @function_tool(timeout=30)
