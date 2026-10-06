@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from agents import RunContextWrapper, function_tool
 
@@ -308,10 +308,11 @@ async def finish_scan(
         technical_analysis: Consolidated findings + systemic themes.
         recommendations: Prioritized, actionable remediation.
     """
-    inner = ctx.context if isinstance(ctx.context, dict) else {}
+    context: Any = ctx.context
+    inner = cast("dict[str, Any]", context) if isinstance(context, dict) else {}
     coordinator = coordinator_from_context(inner)
-    me = inner.get("agent_id")
-    parent_id = inner.get("parent_id")
+    me = cast("str | None", inner.get("agent_id"))
+    parent_id = cast("str | None", inner.get("parent_id"))
     if coordinator is not None and parent_id is None and me is not None:
         active_agents = await coordinator.active_agents_except(me)
         if active_agents and coordinator.reserve_stopped:
