@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from strix.report.writer import atomic_write_text
 from strix.skills import get_available_skills
@@ -156,7 +156,7 @@ def read_agent_graph(state_dir: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         logger.warning("agent graph snapshot at %s is unreadable", path, exc_info=True)
         return {}
-    return data if isinstance(data, dict) else {}
+    return cast("dict[str, Any]", data) if isinstance(data, dict) else {}
 
 
 def _normalized(text: str) -> str:
@@ -183,12 +183,13 @@ def agents_from_graph(graph: dict[str, Any]) -> list[dict[str, Any]]:
     statuses = graph.get("statuses")
     if not isinstance(statuses, dict):
         return []
+    statuses = cast("dict[str, Any]", statuses)
     raw_names = graph.get("names")
-    names: dict[str, Any] = raw_names if isinstance(raw_names, dict) else {}
+    names = cast("dict[str, Any]", raw_names) if isinstance(raw_names, dict) else {}
     raw_metadata = graph.get("metadata")
-    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
+    metadata = cast("dict[str, Any]", raw_metadata) if isinstance(raw_metadata, dict) else {}
     raw_parents = graph.get("parent_of")
-    parents: dict[str, Any] = raw_parents if isinstance(raw_parents, dict) else {}
+    parents = cast("dict[str, Any]", raw_parents) if isinstance(raw_parents, dict) else {}
     # Only an unambiguous root earns the exemption below. A snapshot with no
     # parent links at all makes every agent look parentless, and excusing all
     # of them would silently delete the silent-agent check.
@@ -198,9 +199,9 @@ def agents_from_graph(graph: dict[str, Any]) -> list[dict[str, Any]]:
     agents: list[dict[str, Any]] = []
     for agent_id, status in statuses.items():
         raw_meta = metadata.get(agent_id)
-        meta: dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else {}
-        raw_skills = meta.get("skills")
-        skills: list[Any] = raw_skills if isinstance(raw_skills, list) else []
+        meta = cast("dict[str, Any]", raw_meta) if isinstance(raw_meta, dict) else {}
+        raw_skills: object = meta.get("skills")
+        skills = cast("list[object]", raw_skills) if isinstance(raw_skills, list) else []
         agents.append(
             {
                 "agent_id": agent_id,
@@ -385,8 +386,8 @@ def build_coverage_document(
             "recorded_at": entry.get("created_at", ""),
             "updated_at": entry.get("updated_at", ""),
             "previous_outcomes": [
-                str(previous.get("outcome", ""))
-                for previous in entry.get("history", [])
+                str(cast("dict[str, Any]", previous).get("outcome", ""))
+                for previous in cast("list[object]", entry.get("history", []))
                 if isinstance(previous, dict)
             ],
             "source": "agent_reported",
