@@ -20,7 +20,7 @@ import threading
 import time
 import urllib.parse
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import requests
 
@@ -28,7 +28,7 @@ from strix.utils.secret_files import write_secret_text
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from types import TracebackType
 
     from openai import AsyncOpenAI
 
@@ -65,7 +65,7 @@ def _read_store() -> dict[str, Any]:
         data = json.loads(AUTH_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
-    return data if isinstance(data, dict) else {}
+    return cast("dict[str, Any]", data) if isinstance(data, dict) else {}
 
 
 def _write_store(data: dict[str, Any]) -> None:
@@ -73,7 +73,8 @@ def _write_store(data: dict[str, Any]) -> None:
 
 
 def read_record() -> dict[str, Any] | None:
-    record = _read_store().get(PROVIDER)
+    raw_record = _read_store().get(PROVIDER)
+    record = cast("dict[str, Any]", raw_record) if isinstance(raw_record, dict) else None
     if not isinstance(record, dict) or record.get("type") != "oauth":
         return None
     if not (record.get("access") and record.get("refresh") and record.get("account_id")):
@@ -103,28 +104,49 @@ def logout() -> None:
         AUTH_PATH.unlink()
 
 
-@contextlib.contextmanager
-def _refresh_guard() -> Iterator[None]:
+class _RefreshGuard(contextlib.AbstractContextManager[None]):
     """Serialize token refresh within (lock) and across (flock) Strix processes,
     so concurrent runs can't both spend the single-use refresh token."""
-    with _refresh_lock:
+
+    def __init__(self) -> None:
+        self._handle: Any = None
+        self._fcntl: Any = None
+
+    def __enter__(self) -> None:
+        _refresh_lock.acquire()
         try:
             import fcntl
 
             lock_path = AUTH_PATH.with_suffix(".lock")
             lock_path.parent.mkdir(parents=True, exist_ok=True)
-            handle = lock_path.open("w")
+            self._handle = lock_path.open("w")
+            self._fcntl = fcntl
         except (ImportError, OSError):
-            yield
             return
+        except BaseException:
+            _refresh_lock.release()
+            raise
+        with contextlib.suppress(OSError):
+            fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX)
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> Literal[False]:
         try:
-            with contextlib.suppress(OSError):
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            yield
+            if self._handle is not None and self._fcntl is not None:
+                with contextlib.suppress(OSError):
+                    self._fcntl.flock(self._handle.fileno(), self._fcntl.LOCK_UN)
+                self._handle.close()
         finally:
-            with contextlib.suppress(OSError):
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            handle.close()
+            _refresh_lock.release()
+        return False
+
+
+def _refresh_guard() -> _RefreshGuard:
+    return _RefreshGuard()
 
 
 class CodexAuthError(Exception):
@@ -235,7 +257,7 @@ def _post_form(payload: dict[str, str]) -> dict[str, Any]:
     data = json.loads(body or b"{}")
     if not isinstance(data, dict):
         raise CodexAuthError("bad_response", "token endpoint returned non-object")
-    return data
+    return cast("dict[str, Any]", data)
 
 
 def _record_from_token_response(
@@ -302,14 +324,15 @@ def _account_id_from_jwt(token: str | None) -> str | None:
         return None
     if not isinstance(payload, dict):
         return None
-    auth = payload.get(_ACCOUNT_CLAIM)
+    payload_data = cast("dict[str, Any]", payload)
+    auth = payload_data.get(_ACCOUNT_CLAIM)
     if isinstance(auth, dict):
-        account_id = auth.get("chatgpt_account_id")
+        account_id = cast("dict[str, Any]", auth).get("chatgpt_account_id")
         if isinstance(account_id, str) and account_id:
             return account_id
-    organizations = payload.get("organizations")
+    organizations = payload_data.get("organizations")
     if isinstance(organizations, list) and organizations and isinstance(organizations[0], dict):
-        org_id = organizations[0].get("id")
+        org_id = cast("dict[str, Any]", organizations[0]).get("id")
         if isinstance(org_id, str) and org_id:
             return org_id
     return None
