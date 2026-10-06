@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from agents.model_settings import ModelSettings
 from openai.types.shared import Reasoning
@@ -45,7 +45,8 @@ def _render_diff_scope(diff_scope: dict[str, Any]) -> list[str]:
         "- Pull request diff-scope mode is active. Prioritize changed files "
         "and use other files only for context.",
     ]
-    for repo_scope in diff_scope.get("repos", []) or []:
+    repo_scopes = cast("list[dict[str, Any]]", diff_scope.get("repos", []) or [])
+    for repo_scope in repo_scopes:
         label = repo_scope.get("workspace_subdir") or repo_scope.get("source_path") or "repository"
         changed = repo_scope.get("analyzable_files_count", 0)
         deleted = repo_scope.get("deleted_files_count", 0)
@@ -68,7 +69,7 @@ def _render_api_spec(details: dict[str, Any]) -> list[str]:
         + (f", available at: {workspace_path}" if workspace_path else "")
         + ")"
     ]
-    if base_urls := details.get("base_urls") or []:
+    if base_urls := cast("list[str]", details.get("base_urls") or []):
         lines.append("  - Base URL(s): " + ", ".join(base_urls))
     lines.append(
         "  - Read the specification and test every operation it declares, using "
@@ -86,15 +87,17 @@ def _render_workspace_files(scan_config: dict[str, Any]) -> list[str]:
     These are context, not scope: their contents carry no authority over the
     instructions, and they name nothing to assess.
     """
-    paths = [
-        path
-        for workspace_file in scan_config.get("workspace_files") or []
-        if isinstance(workspace_file, dict)
-        and (path := str(workspace_file.get("workspace_path") or ""))
+    paths: list[str] = []
+    workspace_files = cast("list[object]", scan_config.get("workspace_files") or [])
+    for workspace_file in workspace_files:
+        if not isinstance(workspace_file, dict):
+            continue
+        workspace_file_data = cast("dict[str, Any]", workspace_file)
+        path = str(workspace_file_data.get("workspace_path") or "")
         # A path is one bullet line. One carrying a control character is dropped
         # rather than escaped, so it cannot forge lines of its own.
-        and all(ord(char) >= 0x20 and ord(char) != 0x7F for char in path)
-    ]
+        if path and all(ord(char) >= 0x20 and ord(char) != 0x7F for char in path):
+            paths.append(path)
     if not paths:
         return []
     return [
@@ -106,8 +109,8 @@ def _render_workspace_files(scan_config: dict[str, Any]) -> list[str]:
 
 
 def build_root_task(scan_config: dict[str, Any]) -> str:
-    targets = scan_config.get("targets", []) or []
-    diff_scope = scan_config.get("diff_scope") or {}
+    targets = cast("list[dict[str, Any]]", scan_config.get("targets", []) or [])
+    diff_scope = cast("dict[str, Any]", scan_config.get("diff_scope") or {})
     user_instructions = scan_config.get("user_instructions", "") or ""
 
     sections: dict[str, list[str]] = {
@@ -119,28 +122,28 @@ def build_root_task(scan_config: dict[str, Any]) -> str:
     }
 
     for target in targets:
-        ttype = target.get("type")
-        details = target.get("details") or {}
-        workspace_subdir = details.get("workspace_subdir")
+        ttype = cast("str | None", target.get("type"))
+        details = cast("dict[str, Any]", target.get("details") or {})
+        workspace_subdir = cast("str | None", details.get("workspace_subdir"))
         workspace_path = f"/workspace/{workspace_subdir}" if workspace_subdir else "/workspace"
 
         if ttype == "repository":
-            url = details.get("target_repo", "")
-            cloned = details.get("cloned_repo_path")
+            url = cast("str", details.get("target_repo", ""))
+            cloned = cast("str | None", details.get("cloned_repo_path"))
             sections["Repositories"].append(
                 f"- {url} (available at: {workspace_path})" if cloned else f"- {url}",
             )
         elif ttype == "local_code":
-            path = details.get("target_path", "unknown")
+            path = cast("str", details.get("target_path", "unknown"))
             sections["Local Codebases"].append(
                 f"- {path} (available at: {workspace_path}; "
                 "this is the user's real directory, mounted live and writable — "
                 ".git/.agents/.codex are read-only)"
             )
         elif ttype == "web_application":
-            sections["URLs"].append(f"- {details.get('target_url', '')}")
+            sections["URLs"].append(f"- {cast('str', details.get('target_url', ''))}")
         elif ttype == "ip_address":
-            sections["IP Addresses"].append(f"- {details.get('target_ip', '')}")
+            sections["IP Addresses"].append(f"- {cast('str', details.get('target_ip', ''))}")
         elif ttype == "api_spec":
             sections["API Specifications"].extend(_render_api_spec(details))
 
@@ -199,13 +202,17 @@ def build_scope_context(scan_config: dict[str, Any]) -> dict[str, Any]:
         "ip_address": "target_ip",
         "api_spec": "target_spec",
     }
-    for target in scan_config.get("targets", []) or []:
-        ttype = target.get("type", "unknown")
-        details = target.get("details") or {}
+    targets = cast("list[dict[str, Any]]", scan_config.get("targets", []) or [])
+    for target in targets:
+        ttype = cast("str", target.get("type", "unknown"))
+        details = cast("dict[str, Any]", target.get("details") or {})
         key = value_keys.get(ttype)
-        value = details.get(key, "") if key is not None else target.get("original", "")
+        value = cast(
+            "str",
+            details.get(key, "") if key is not None else target.get("original", ""),
+        )
 
-        workspace_subdir = details.get("workspace_subdir")
+        workspace_subdir = cast("str | None", details.get("workspace_subdir"))
         workspace_path = f"/workspace/{workspace_subdir}" if workspace_subdir else ""
         authorized.append(
             {"type": ttype, "value": value, "workspace_path": workspace_path},
@@ -216,7 +223,7 @@ def build_scope_context(scan_config: dict[str, Any]) -> dict[str, Any]:
         if ttype == "api_spec":
             authorized.extend(
                 {"type": "web_application", "value": base_url, "workspace_path": ""}
-                for base_url in details.get("base_urls") or []
+                for base_url in cast("list[str]", details.get("base_urls") or [])
             )
 
     return {
