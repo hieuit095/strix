@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 
 if TYPE_CHECKING:
@@ -97,28 +97,38 @@ class TuiLiveView:
         if not agents_path.exists():
             return
         try:
-            agents_data = json.loads(agents_path.read_text(encoding="utf-8"))
+            agents_data = cast(
+                "dict[str, object]", json.loads(agents_path.read_text(encoding="utf-8"))
+            )
         except (OSError, json.JSONDecodeError):
             return
-        statuses = agents_data.get("statuses") or {}
-        names = agents_data.get("names") or {}
-        parent_of = agents_data.get("parent_of") or {}
-        errors = agents_data.get("errors") or {}
+        statuses: object = agents_data.get("statuses") or {}
         if not isinstance(statuses, dict):
             return
-        for agent_id, status in statuses.items():
-            if not isinstance(agent_id, str):
-                continue
+        statuses_by_agent: dict[str, Any] = cast("dict[str, Any]", statuses)
+        names: object = agents_data.get("names") or {}
+        names_by_agent: dict[str, Any] = (
+            cast("dict[str, Any]", names) if isinstance(names, dict) else {}
+        )
+        parent_of: object = agents_data.get("parent_of") or {}
+        parents_by_agent: dict[str, Any] = (
+            cast("dict[str, Any]", parent_of) if isinstance(parent_of, dict) else {}
+        )
+        errors: object = agents_data.get("errors") or {}
+        errors_by_agent: dict[str, Any] = (
+            cast("dict[str, Any]", errors) if isinstance(errors, dict) else {}
+        )
+        for agent_id, status in statuses_by_agent.items():
             self.upsert_agent(
                 agent_id,
-                name=names.get(agent_id, agent_id) if isinstance(names, dict) else agent_id,
-                parent_id=parent_of.get(agent_id) if isinstance(parent_of, dict) else None,
+                name=names_by_agent.get(agent_id, agent_id),
+                parent_id=parents_by_agent.get(agent_id),
                 status=str(status),
-                error_message=errors.get(agent_id) if isinstance(errors, dict) else None,
+                error_message=errors_by_agent.get(agent_id),
             )
         # Ahead of the replayed history, so it opens the transcript.
         self.flush_user_instruction()
-        self._hydrate_sdk_session_history(run_dir, statuses.keys())
+        self._hydrate_sdk_session_history(run_dir, statuses_by_agent.keys())
 
     def _load_run_record(self, run_dir: Path) -> None:
         """Take the user's opening message off the record."""
@@ -128,10 +138,11 @@ class TuiLiveView:
             return
         if not isinstance(record, dict):
             return
-        instruction = record.get("user_instruction")
+        run_record = cast("dict[str, Any]", record)
+        instruction = run_record.get("user_instruction")
         if not isinstance(instruction, str):
             return
-        start_time = record.get("start_time")
+        start_time = run_record.get("start_time")
         # Stamped with the run's start so it sorts ahead of replayed history.
         self.set_user_instruction(
             instruction,
@@ -473,7 +484,10 @@ def _is_internal_agent_turn(content: str) -> bool:
 
 def _message_content_text(content: Any) -> str:
     parts: list[str] = []
-    content_items = content if isinstance(content, list) else [content]
+    content_value: object = content
+    content_items = (
+        cast("list[object]", content_value) if isinstance(content_value, list) else [content_value]
+    )
     for part in content_items:
         if isinstance(part, str):
             parts.append(part)
@@ -486,13 +500,13 @@ def _message_content_text(content: Any) -> str:
 
 def _raw_field(raw: Any, key: str, default: Any = None) -> Any:
     if isinstance(raw, dict):
-        return raw.get(key, default)
+        return cast("dict[str, Any]", raw).get(key, default)
     return getattr(raw, key, default)
 
 
 def _parse_json_object(value: Any) -> dict[str, Any]:
     parsed = _parse_json_value(value)
-    return parsed if isinstance(parsed, dict) else {}
+    return cast("dict[str, Any]", parsed) if isinstance(parsed, dict) else {}
 
 
 def _parse_json_value(value: Any) -> Any:
@@ -512,15 +526,18 @@ def _normalize_image_result(result: Any) -> Any:
 
 
 def _image_url_from_result(result: Any) -> str | None:
-    if isinstance(result, list):
-        for block in result:
+    result_value: object = result
+    if isinstance(result_value, list):
+        blocks = cast("list[object]", result_value)
+        for block in blocks:
             url = _image_url_from_result(block)
             if url is not None:
                 return url
         return None
-    if isinstance(result, dict):
-        if result.get("type") in {"image", "input_image", "output_image"}:
-            url = result.get("image_url")
+    if isinstance(result_value, dict):
+        image_result = cast("dict[str, Any]", result_value)
+        if image_result.get("type") in {"image", "input_image", "output_image"}:
+            url = image_result.get("image_url")
             return url if isinstance(url, str) and url.startswith("data:image/") else None
         return None
     if isinstance(result, ToolOutputImage) and isinstance(result.image_url, str):
@@ -529,6 +546,6 @@ def _image_url_from_result(result: Any) -> str | None:
 
 
 def _tool_status_from_result(result: Any) -> str:
-    if isinstance(result, dict) and result.get("success") is False:
+    if isinstance(result, dict) and cast("dict[str, Any]", result).get("success") is False:
         return "failed"
     return "completed"
