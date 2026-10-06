@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 
 SCAN_MODES = ("quick", "standard", "deep")
@@ -50,8 +54,9 @@ def terminal_projection(  # noqa: PLR0911
     if depth >= 8:
         return "[nested value omitted from terminal projection]"
     if isinstance(value, dict):
-        items = list(value.items())
-        projected = {
+        mapping = cast("Mapping[object, Any]", value)
+        items = list(mapping.items())
+        projected: dict[str, Any] = {
             sanitize_terminal_text(str(key)): terminal_projection(
                 item,
                 max_string=max_string,
@@ -66,6 +71,7 @@ def terminal_projection(  # noqa: PLR0911
             )
         return projected
     if isinstance(value, list | tuple):
+        values = cast("Sequence[Any]", value)
         projected_items = [
             terminal_projection(
                 item,
@@ -73,11 +79,11 @@ def terminal_projection(  # noqa: PLR0911
                 max_items=max_items,
                 depth=depth + 1,
             )
-            for item in value[:max_items]
+            for item in values[:max_items]
         ]
-        if len(value) > max_items:
+        if len(values) > max_items:
             projected_items.append(
-                f"[{len(value) - max_items} items omitted from terminal projection]"
+                f"[{len(values) - max_items} items omitted from terminal projection]"
             )
         return projected_items
     return terminal_projection(
@@ -94,11 +100,13 @@ def collection_item_projection(item: dict[str, Any]) -> dict[str, Any]:
     item_budget = MAX_COLLECTION_ITEM_BYTES + MAX_IMAGE_DATA_URI_BYTES
     projected = terminal_projection(item)
     assert isinstance(projected, dict)
+    projected = cast("dict[str, Any]", projected)
     if len(json.dumps(projected, default=str, separators=(",", ":")).encode()) <= item_budget:
         return projected
 
     projected = terminal_projection(item, max_string=8 * 1024, max_items=40)
     assert isinstance(projected, dict)
+    projected = cast("dict[str, Any]", projected)
     projected["projection_truncated"] = True
     if len(json.dumps(projected, default=str, separators=(",", ":")).encode()) <= item_budget:
         return projected
