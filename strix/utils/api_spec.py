@@ -17,7 +17,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 import requests
@@ -59,7 +59,7 @@ def load_spec(path: str | Path) -> dict[str, Any]:
             raise SpecParseError(f"{p} is not valid JSON or YAML: {exc}") from exc
     if not isinstance(data, dict):
         raise SpecParseError(f"{p} does not contain a mapping at the top level")
-    return data
+    return cast("dict[str, Any]", data)
 
 
 def classify_spec(raw: dict[str, Any]) -> str | None:
@@ -95,7 +95,8 @@ def spec_title(raw: dict[str, Any]) -> str:
     info = raw.get("info")
     if not isinstance(info, dict):
         return "API"
-    name = info.get("title") or info.get("name") or "API"
+    info_data = cast("dict[str, Any]", info)
+    name = info_data.get("title") or info_data.get("name") or "API"
     return str(name).strip() or "API"
 
 
@@ -117,9 +118,11 @@ def _resolve_server_url(url: str, variables: Any) -> str:
     if "{" not in url or not isinstance(variables, dict):
         return url
     defaults: dict[str, str] = {}
-    for name, spec in variables.items():
-        if isinstance(spec, dict) and spec.get("default") is not None:
-            defaults[str(name)] = str(spec["default"])
+    for name, spec in cast("dict[str, Any]", variables).items():
+        if isinstance(spec, dict):
+            spec_data = cast("dict[str, Any]", spec)
+            if spec_data.get("default") is not None:
+                defaults[str(name)] = str(spec_data["default"])
     return _SERVER_VAR_PATTERN.sub(lambda m: defaults.get(m.group(1), m.group(0)), url)
 
 
@@ -127,11 +130,14 @@ def _openapi_base_urls(raw: dict[str, Any]) -> list[str]:
     servers = raw.get("servers")
     if not isinstance(servers, list):
         return []
+    server_entries = cast("list[object]", servers)
     return _absolute_urls(
         [
-            _resolve_server_url(str(server["url"]), server.get("variables"))
-            for server in servers
-            if isinstance(server, dict) and server.get("url")
+            _resolve_server_url(str(server_data["url"]), server_data.get("variables"))
+            for server in server_entries
+            if isinstance(server, dict)
+            for server_data in [cast("dict[str, Any]", server)]
+            if server_data.get("url")
         ],
     )
 
@@ -153,9 +159,12 @@ def postman_variables(raw: dict[str, Any]) -> dict[str, str]:
     variables: dict[str, str] = {}
     entries = raw.get("variable")
     if isinstance(entries, list):
-        for entry in entries:
-            if isinstance(entry, dict) and entry.get("key") is not None:
-                variables[str(entry["key"])] = str(entry.get("value", ""))
+        variable_entries = cast("list[object]", entries)
+        for entry in variable_entries:
+            if isinstance(entry, dict):
+                entry_data = cast("dict[str, Any]", entry)
+                if entry_data.get("key") is not None:
+                    variables[str(entry_data["key"])] = str(entry_data.get("value", ""))
     return variables
 
 
@@ -169,10 +178,15 @@ def _postman_request_url(url: Any, variables: dict[str, str]) -> str:
     if isinstance(url, str):
         raw = url
     elif isinstance(url, dict):
-        raw = str(url.get("raw", ""))
+        url_data = cast("dict[str, Any]", url)
+        raw = str(url_data.get("raw", ""))
         if not raw:
-            host = url.get("host")
-            raw = ".".join(str(h) for h in host) if isinstance(host, list) else str(host or "")
+            host = url_data.get("host")
+            if isinstance(host, list):
+                host_entries = cast("list[object]", host)
+                raw = ".".join(str(h) for h in host_entries)
+            else:
+                raw = str(host or "")
     else:
         return ""
     return _resolve_postman_vars(raw, variables)
@@ -186,16 +200,18 @@ def _walk_postman_hosts(
 ) -> None:
     if depth > _MAX_POSTMAN_DEPTH or not isinstance(items, list):
         return
-    for node in items:
+    postman_items = cast("list[object]", items)
+    for node in postman_items:
         if not isinstance(node, dict):
             continue
-        if isinstance(node.get("item"), list):
-            _walk_postman_hosts(node["item"], variables, hosts, depth + 1)
+        node_data = cast("dict[str, Any]", node)
+        if isinstance(node_data.get("item"), list):
+            _walk_postman_hosts(node_data["item"], variables, hosts, depth + 1)
             continue
-        request = node.get("request")
+        request = node_data.get("request")
         if not isinstance(request, dict):
             continue
-        url = _postman_request_url(request.get("url"), variables)
+        url = _postman_request_url(cast("dict[str, Any]", request).get("url"), variables)
         split = urlsplit(url)
         if split.scheme and split.netloc:
             hosts.append(f"{split.scheme}://{split.netloc}")
@@ -269,7 +285,7 @@ def _postman_api_json(url: str, api_key: str, label: str) -> dict[str, Any]:
         raise SpecParseError(f"Postman API returned non-JSON for {label}") from exc
     if not isinstance(payload, dict):
         raise SpecParseError(f"Unexpected Postman API response shape for {label}")
-    return payload
+    return cast("dict[str, Any]", payload)
 
 
 def fetch_postman_collection(collection_uid: str, api_key: str) -> dict[str, Any]:
@@ -287,7 +303,7 @@ def fetch_postman_collection(collection_uid: str, api_key: str) -> dict[str, Any
     collection = payload.get("collection", payload)
     if not isinstance(collection, dict) or not collection:
         raise SpecParseError(f"Postman collection {collection_uid} came back empty")
-    return collection
+    return cast("dict[str, Any]", collection)
 
 
 def fetch_postman_environment(environment_uid: str, api_key: str) -> dict[str, str]:
@@ -301,12 +317,15 @@ def fetch_postman_environment(environment_uid: str, api_key: str) -> dict[str, s
         api_key,
         f"environment {environment_uid}",
     )
-    environment = payload.get("environment", payload)
-    values = environment.get("values") if isinstance(environment, dict) else None
+    environment = cast("dict[str, Any]", payload.get("environment", payload))
+    values = environment.get("values")
     if not isinstance(values, list):
         return {}
+    environment_values = cast("list[object]", values)
     return {
-        str(value["key"]): str(value.get("value", ""))
-        for value in values
-        if isinstance(value, dict) and value.get("key") and value.get("enabled", True)
+        str(value_data["key"]): str(value_data.get("value", ""))
+        for value in environment_values
+        if isinstance(value, dict)
+        for value_data in [cast("dict[str, Any]", value)]
+        if value_data.get("key") and value_data.get("enabled", True)
     }

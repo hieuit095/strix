@@ -596,13 +596,14 @@ def _build_fixes(report: dict[str, Any]) -> list[dict[str, Any]] | None:
         return None
 
     artifact_changes: list[dict[str, Any]] = []
-    for location in raw_locations:
+    for location in cast("list[object]", raw_locations):
         if not isinstance(location, dict):
             continue
-        file_path = _string_value(location.get("file"))
-        fix_before = _string_value(location.get("fix_before"))
-        fix_after = _string_value(location.get("fix_after"))
-        start_line = location.get("start_line")
+        location_data = cast("dict[str, Any]", location)
+        file_path = _string_value(location_data.get("file"))
+        fix_before = _string_value(location_data.get("fix_before"))
+        fix_after = _string_value(location_data.get("fix_after"))
+        start_line = location_data.get("start_line")
         if not (file_path and fix_before and fix_after):
             continue
         if type(start_line) is not int or start_line < 1:
@@ -612,7 +613,7 @@ def _build_fixes(report: dict[str, Any]) -> list[dict[str, Any]] | None:
             continue
 
         deleted_region: dict[str, Any] = {"startLine": start_line}
-        end_line = location.get("end_line")
+        end_line = location_data.get("end_line")
         if type(end_line) is int and end_line >= start_line:
             deleted_region["endLine"] = end_line
 
@@ -717,27 +718,30 @@ def _append_coverage(
     entries = coverage.get("entries")
     if not isinstance(entries, list):
         return
-    for entry in entries:
+    for entry in cast("list[object]", entries):
         if not isinstance(entry, dict):
             continue
-        kind = _OUTCOME_TO_KIND.get(str(entry.get("outcome", "")))
+        entry_data = cast("dict[str, Any]", entry)
+        kind = _OUTCOME_TO_KIND.get(str(entry_data.get("outcome", "")))
         if kind is None:
             continue
-        rule_id = _coverage_rule_id(str(entry.get("risk_area", "")))
+        rule_id = _coverage_rule_id(str(entry_data.get("risk_area", "")))
         if rule_id not in rules_by_id:
             rule_index_by_id[rule_id] = len(rules_by_id)
             rules_by_id[rule_id] = _build_coverage_rule(
-                rule_id, _string_value(entry.get("risk_area")) or "unspecified risk"
+                rule_id, _string_value(entry_data.get("risk_area")) or "unspecified risk"
             )
-        results.append(_build_coverage_result(rule_id, rule_index_by_id[rule_id], kind, entry))
+        results.append(_build_coverage_result(rule_id, rule_index_by_id[rule_id], kind, entry_data))
 
 
 def _coverage_invocation(coverage: dict[str, Any]) -> dict[str, Any]:
     """``executionSuccessful: false`` stops a truncated run reading as a clean one."""
-    completeness = coverage.get("completeness")
-    completeness = completeness if isinstance(completeness, dict) else {}
-    caveats = completeness.get("caveats")
-    caveats = caveats if isinstance(caveats, list) else []
+    raw_completeness = coverage.get("completeness")
+    completeness: dict[str, Any] = (
+        cast("dict[str, Any]", raw_completeness) if isinstance(raw_completeness, dict) else {}
+    )
+    raw_caveats = completeness.get("caveats")
+    caveats = cast("list[object]", raw_caveats) if isinstance(raw_caveats, list) else []
 
     invocation: dict[str, Any] = {"executionSuccessful": bool(completeness.get("complete", True))}
     if caveats:
@@ -804,14 +808,15 @@ def _build_physical_locations(raw_locations: Any) -> tuple[list[dict[str, Any]],
 
     locations: list[dict[str, Any]] = []
     dropped_location_count = 0
-    for location in raw_locations:
+    for location in cast("list[object]", raw_locations):
         if not isinstance(location, dict):
             dropped_location_count += 1
             continue
 
-        file_path = _string_value(location.get("file"))
-        start_line = location.get("start_line")
-        end_line = location.get("end_line")
+        location_data = cast("dict[str, Any]", location)
+        file_path = _string_value(location_data.get("file"))
+        start_line = location_data.get("start_line")
+        end_line = location_data.get("end_line")
         if not file_path or type(start_line) is not int or start_line < 1:
             dropped_location_count += 1
             continue
@@ -824,7 +829,7 @@ def _build_physical_locations(raw_locations: Any) -> tuple[list[dict[str, Any]],
         if type(end_line) is int and end_line >= start_line:
             region["endLine"] = end_line
 
-        snippet = _string_value(location.get("snippet"))
+        snippet = _string_value(location_data.get("snippet"))
         if snippet:
             region["snippet"] = {"text": snippet}
 
@@ -834,7 +839,7 @@ def _build_physical_locations(raw_locations: Any) -> tuple[list[dict[str, Any]],
         }
         entry: dict[str, Any] = {"physicalLocation": physical_location}
 
-        label = _string_value(location.get("label"))
+        label = _string_value(location_data.get("label"))
         if label:
             entry["message"] = {"text": label}
 
@@ -988,8 +993,9 @@ def _primary_fingerprint(
     uri = ""
     start_line: int | None = None
     if primary_physical:
-        uri = (primary_physical.get("artifactLocation") or {}).get("uri", "") or ""
-        region = primary_physical.get("region") or {}
+        artifact_location = cast("dict[str, Any]", primary_physical.get("artifactLocation") or {})
+        uri = artifact_location.get("uri", "") or ""
+        region = cast("dict[str, Any]", primary_physical.get("region") or {})
         sl = region.get("startLine")
         if isinstance(sl, int) and sl >= 1:
             start_line = sl

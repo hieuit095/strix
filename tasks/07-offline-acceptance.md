@@ -86,6 +86,11 @@ Gate còn thiếu: Git writable; môi trường test/type discovery hoạt độ
 - Git is writable. Parser fix and its regression/evidence are committed as `605e11c`; no push.
 - Required-gate cleanup in progress: explicit scan payload types in `strix/core/inputs.py` preserve existing malformed-workspace-file filtering. `UV_CACHE_DIR=/tmp/strix-uv-cache uv run --offline pyright strix/core/inputs.py` → exit **0**; `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_inputs.py tests/test_api_spec_targets.py tests/test_workspace_files.py -q` → exit **0**, 71 passed. `ruff check` and `ruff format --check` on that file → exit **0**. Follow-up `make check-all` → exit **2**, Pyright reduced 910 → **865**; continue clearing remaining baseline diagnostics without disabling rules.
 
+### Additional required-gate work
+
+- Strict typing cleanup in `strix/utils/api_spec.py` and `strix/report/sarif.py` follows their existing runtime shape checks and retains validation/filter behavior. File-scoped Pyright, mypy, Ruff check/format all pass. Regression rerun after final edits: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_inputs.py tests/test_api_spec_targets.py tests/test_workspace_files.py tests/test_api_spec.py tests/test_sarif.py tests/test_sarif_stride.py tests/test_report_coverage.py tests/test_report_writer.py tests/test_reporting_fields.py -q` → exit **0**, **266 passed**, 25.26s.
+- Latest `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True make check-all` → exit **2**. Ruff format/check and mypy pass; Pyright **784 errors across 58 files**. The edits remove 126 baseline diagnostics (910→784), but acceptance remains open; continue without suppressions or configuration weakening.
+
 Final rerun sau harness 08: `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 40s uv run --offline pytest -q -o faulthandler_timeout=10` exit **124**, vẫn treo async/thread boundary (selector; worker threads idle), không phải full pass. Log `/tmp/strix-hybrid-final-full-suite.log`. Final Ruff format/check và git diff --check exit 0.
 
 
