@@ -6,7 +6,7 @@ import json
 import logging
 import sqlite3
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from strix.core.paths import runtime_state_dir
 
@@ -55,7 +55,13 @@ def load_session_history(run_dir: Path, agent_ids: Any) -> list[tuple[str, dict[
             logger.debug("Skipping unreadable SDK session item %s for %s", row_id, agent_id)
             continue
         if isinstance(item, dict):
-            items.append((str(agent_id), item, _sqlite_timestamp_to_iso(created_at)))
+            items.append(
+                (
+                    str(agent_id),
+                    cast("dict[str, Any]", item),
+                    _sqlite_timestamp_to_iso(created_at),
+                )
+            )
     return items
 
 
