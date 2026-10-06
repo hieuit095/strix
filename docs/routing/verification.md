@@ -130,3 +130,77 @@ Usage was **205 provider requests**, **21,626,792 input + 255,031 output = 21,88
 - **PASS:** `jev_error` fallback is emitted in the runner integration test only after the fake transport returns HTTP 503 and raises `HTTPStatusError`; live scan had zero JEV failures.
 - **NOT OBSERVED:** live Expert/GPT decision. JEV answered Specialist four times and never Expert.
 - **INCOMPLETE:** off/floor-only/JEV-on quality parity, independent ground-truth/PoC review, routed-child resume in a live scan, and actual billing reconciliation.
+
+## Final Task 08 evidence board — 2026-10-07 (ICT)
+
+JEV metadata policy is evidenced by the owner’s 2026-10-06 18:06 ICT live probe: `POST /provider/v1/systemone`, `model=typesafe/jev`, question `route_tier`, HTTP 200, choice `specialist`, usage 410 input/42 output (owner reports two successful requests). This is an account-policy proof even though the separate `/models` catalogue response did not list `typesafe/jev`.
+
+The strengthened one-request live envelope test was run with the opt-in enabled and the protected env file sourced (no shell tracing; cleanup trap unset exported values):
+
+```bash
+set +x
+set -a; . /home/hieuit095/.strix-live.env; set +a
+trap 'unset LLM_API_KEY CMD_API_KEY COMMAND_CODE_API_BASE LLM_API_BASE STRIX_LLM STRIX_API_TYPE STRIX_REASONING_EFFORT LLM_TIMEOUT STRIX_ROUTING_LIVE_TESTS STRIX_ROUTING_LIVE_JEV_ALLOWED' EXIT
+export STRIX_ROUTING_LIVE_TESTS=1 STRIX_ROUTING_LIVE_JEV_ALLOWED=1
+UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 45s \
+  uv run --offline pytest tests/test_routing_live.py::test_live_jev_envelope_contract -q
+```
+
+Exit **0**, **1 passed**. The real request used `typesafe/jev` and `route_tier`; assertions checked finite normalized worker/specialist/expert probabilities, fixed choice schema, one usage callback, allowlist-only state and absence of a private marker/key in request body and logs. Only choice and token usage are retained as live response evidence.
+
+### Three QUICK runs with matching settings
+
+All three completed-run invocations used `-n --scan-mode quick --max-budget 5 --max-turns 500`, reasoning `high`, identical read-only prompt, skills, tool declarations and scope, and the same authorized read-only target snapshot at source commit `6c0fc01e7f969bbf75ef663606aa4a4d7c747620`, served as `http://host.docker.internal:5173`. The common prompt was: “Perform a read-only quick security scan of the authorized local application. Prioritize authorization boundaries, IDOR, broken function-level authorization, and business-logic flows where relevant. Use Strix's normal child-agent workflow when a separate validation task is warranted; do not force a tier/model or invent a finding. Do not modify files, use destructive actions, or test external services.” The worker/specialist/expert mappings were DeepSeek/MiMo/GPT-6.1, thresholds 0.65, caps 0.25/0.05. Each same-process reviewed-rate runner command used `timeout 10800s ... /tmp/strix-hybrid-rate-runner.py --run-scan -n ...`; the protected env supplied credentials without writing them to evidence.
+
+| Routing configuration / run ID | Run / coverage | Agents | Tasks/branches complete | Reports; surfaces; gaps; outcomes | Confirmed/missing findings, false positives, PoC | Duration | Input (cached) + output = total tokens | Estimator (not billed) |
+|---|---|---:|---|---|---|---:|---:|---:|
+| Off / `7e8f` | completed; complete | 7/7 completed | Agent completion proxy 7/7; branch list not separately emitted | 3; 22; 1; reported 6, no issue 6, ruled out 9, follow-up 1 | Unassessable against expected truth set; reports are not independently confirmed | 4415.989s | 30,641,135 (29,647,872 cached) + 315,680 = 30,956,815 | $0.765738516 |
+| On, JEV off / `3a13` | completed; complete | 5/5 completed | Agent completion proxy 5/5; branch list not separately emitted | 9; 25; 3; reported 11, no issue 1, ruled out 10, not applicable 1, follow-up 2 | Unassessable against expected truth set; reports are not independently confirmed | 3135.060s | 14,112,176 (13,345,792 cached) + 286,997 = 14,399,173 | $0.6092325702 |
+| On, JEV on / `3d42` | completed; **incomplete** due one failed Recon & Surface Mapper | 9 completed, 1 failed, 1 stopped | Agent completion proxy 9/11; branch list not separately emitted | 4; 47; 9; reported 8, no issue 12, ruled out 20, follow-up 7 | Unassessable against expected truth set; reports are not independently confirmed | 6828.043s | 32,150,540 (30,721,408 cached) + 455,092 = 32,605,632 | $1.0508849544 |
+
+All underlying CLI exit codes were **2** (findings/reports filed) with `run.json.status=completed`. These figures are not quality-parity evidence. JEV-off log and snapshot show 2 Worker/DeepSeek and 2 Specialist/MiMo rule decisions, no JEV answer. JEV-on run `3d42` has 10 persisted decisions: Worker 4, Specialist 6, Expert 0; its routing log records 10 child decisions (3 `reason=rule`, 7 `reason=jev`) with configured model mappings. Seven actual answer choices had usage: worker 407/41, worker 406/41, specialist 414/42, specialist 416/42, worker 407/41, specialist 414/42, specialist 415/42. No `jev_error` occurred. Worker→Specialist escalation was observed. No Expert route occurred because none of the seven JEV answers chose `expert`; threshold/cap probabilities are not logged, so the absence is not attributed to a particular threshold or cap. The separate live GPT contract is blocked by HTTP 403 `MODEL_NOT_IN_PLAN`. The routing verifier extract is `strix_runs/host-docker-internal-5173_3d42/routing-verification.json`; `overall=pass` applies only to JEV-choice/log/binding/counter evidence, with `coverage_complete=false` and quality parity explicitly `not_assessed`.
+
+A first JEV-on attempt `52d6` is retained and not counted as complete: exit **1**, run status failed after 1143.469s, 6 surfaces, 8 gaps, 0 reports, 2 JEV answers, estimated $0.2515746588. A root read error occurred. Its partial log/state remain available under the ignored run directory.
+
+The board’s reported findings and outcomes have no independent truth baseline. Confirmed expected findings, missing findings, false positives and reproducible PoCs therefore remain **unassessable**. Provider billing was not accessible; actual billed amount is **unread**. Sum of the three completed-run estimates plus the failed partial attempt is $2.6774306994, not a charge.
+
+### Real resume evidence — `host-docker-internal-5173_5f2f`
+
+The original snapshot had root `82b700ac`, existing child `25d10df1`, and routing counts Worker=1/Specialist=0/Expert=0. The saved child model was `openai/deepseek/deepseek-v4.1-flash` at the same CommandCode gateway. The resume log says the coordinator restored two agents at 2026-10-07 02:42:18.684 ICT. The old child completed with that exact model and received no post-resume route decision or JEV request. Four new children were admitted after resume (one Worker/DeepSeek and three Specialist/MiMo); their decisions have three real JEV answers: specialist 416/42, worker 407/41, worker 407/41. Counts advanced from Worker=1/Specialist=0/Expert=0 to Worker=2/Specialist=3/Expert=0, proving restoration/increment rather than reset. Final command exit **2** (Strix report/findings); run status `completed`, coverage complete=true, 32 surfaces, 5 gaps, 1 report, 6/6 agents completed. Usage: 147 requests, 16,630,597 input (15,734,912 cached), 223,467 output = 16,854,064 total tokens, $0.5581810692 estimated, not billed. Evidence extract: `strix_runs/host-docker-internal-5173_5f2f/resume-routing-evidence.json`; underlying `.state/agents.json` and `strix.log` are real artifacts.
+
+Across all nine persisted run ledgers after resume completion, estimates total USD **5.6709503622** across 1,800 requests, including failed/partial runs. This remains below the USD 100 cap; unpersisted direct probes and actual billed amounts are not included.
+
+### Remaining external gates
+
+- Live Expert/GPT: **blocked**. Four GPT-6.1 contract requests returned HTTP 403 `MODEL_NOT_IN_PLAN`; no Expert choice appeared in the JEV scan. Offline mapping is covered. Owner entitlement for one bounded live Expert call is the prerequisite.
+- Ground-truth findings/PoC parity: **blocked** until the owner provides expected finding/roles/repro/PoC truth data.
+- Actual billing: **blocked** until a read-only provider statement/dashboard is available; rate estimates are not charges.
+- Candidate release/merge/deploy: deferred; no such authorization was given and the above gates are open.
+
+The exact three-run command pattern (only the routing flag exports vary; all calls use this common prompt and CLI suffix) is:
+
+```bash
+set +x
+set -a; . /home/hieuit095/.strix-live.env; set +a
+trap 'unset LLM_API_KEY CMD_API_KEY COMMAND_CODE_API_BASE LLM_API_BASE STRIX_LLM STRIX_API_TYPE STRIX_REASONING_EFFORT LLM_TIMEOUT STRIX_ROUTING_LIVE_TESTS STRIX_ROUTING_ENABLED STRIX_ROUTING_JEV_ENABLED STRIX_ROUTING_JEV_POLICY_VERIFIED STRIX_ROUTING_SPECIALIST_MODEL STRIX_ROUTING_EXPERT_MODEL STRIX_ROUTING_SPECIALIST_THRESHOLD STRIX_ROUTING_EXPERT_THRESHOLD STRIX_ROUTING_SPECIALIST_CAP STRIX_ROUTING_EXPERT_CAP INSTRUCTION' EXIT
+export LLM_API_KEY="$CMD_API_KEY" LLM_API_BASE="$COMMAND_CODE_API_BASE" STRIX_LLM='openai/deepseek/deepseek-v4.1-flash' STRIX_REASONING_EFFORT=high
+export STRIX_ROUTING_SPECIALIST_MODEL='openai/xiaomi/mimo-v2.6-pro' STRIX_ROUTING_EXPERT_MODEL='openai/gpt-6.1-sol'
+export STRIX_ROUTING_SPECIALIST_THRESHOLD=0.65 STRIX_ROUTING_EXPERT_THRESHOLD=0.65 STRIX_ROUTING_SPECIALIST_CAP=0.25 STRIX_ROUTING_EXPERT_CAP=0.05
+INSTRUCTION="Perform a read-only quick security scan of the authorized local application. Prioritize authorization boundaries, IDOR, broken function-level authorization, and business-logic flows where relevant. Use Strix's normal child-agent workflow when a separate validation task is warranted; do not force a tier/model or invent a finding. Do not modify files, use destructive actions, or test external services."
+
+# Run A: routing off
+export STRIX_ROUTING_ENABLED=false STRIX_ROUTING_JEV_ENABLED=false
+UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 10800s uv run --project /home/hieuit095/strix --offline python /tmp/strix-hybrid-rate-runner.py --run-scan -n -t http://host.docker.internal:5173 --scan-mode quick --max-budget 5 --max-turns 500 --instruction "$INSTRUCTION"
+
+# Run B: routing on, JEV off
+export STRIX_ROUTING_ENABLED=true STRIX_ROUTING_JEV_ENABLED=false STRIX_ROUTING_JEV_POLICY_VERIFIED=1
+UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 10800s uv run --project /home/hieuit095/strix --offline python /tmp/strix-hybrid-rate-runner.py --run-scan -n -t http://host.docker.internal:5173 --scan-mode quick --max-budget 5 --max-turns 500 --instruction "$INSTRUCTION"
+
+# Run C: routing on, JEV on
+export STRIX_ROUTING_ENABLED=true STRIX_ROUTING_JEV_ENABLED=true STRIX_ROUTING_JEV_POLICY_VERIFIED=1
+UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 10800s uv run --project /home/hieuit095/strix --offline python /tmp/strix-hybrid-rate-runner.py --run-scan -n -t http://host.docker.internal:5173 --scan-mode quick --max-budget 5 --max-turns 500 --instruction "$INSTRUCTION"
+```
+
+Each CLI process exited **2** with persisted completed status. The command-code contract failures are separate: `STRIX_ROUTING_LIVE_TESTS=1 UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 180s uv run --offline pytest tests/test_routing_live.py -k 'live_text_contract or live_full_tool_contract' -q` exited **1**, 8 passed / 4 GPT cases failed HTTP 403 `MODEL_NOT_IN_PLAN`; no retry or purchase followed.
+
+After all live scans completed, the isolated Supabase stack was stopped with `supabase stop --workdir /tmp/strix-live-target-6c0fc01 --no-backup` (exit **0**) and its Vite process was stopped. The owner’s repository remained read-only at HEAD `6c0fc01e7f969bbf75ef663606aa4a4d7c747620`, with only its pre-existing untracked `scripts/optimize_system.sh`; no target files were changed.

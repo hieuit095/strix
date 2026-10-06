@@ -6,7 +6,7 @@
 
 ## Thứ tự thực hiện
 
-Chạy tuần tự; task sau nhận interface đã chốt trong task trước. Không chạy nhiều task sửa cùng file đồng thời. Mỗi task đọc được riêng nhưng vẫn phải đọc RULES và plan. Nếu người dùng yêu cầu thực hiện một task, không tự thực hiện toàn bộ danh sách.
+Chạy tuần tự; task sau nhận interface đã chốt trong task trước. Không chạy nhiều task sửa cùng file đồng thời. Mỗi task đọc được riêng nhưng vẫn phải đọc RULES và plan. Nếu người dùng yêu cầu thực hiện một task, không tự thực hiện toàn bộ danh sách. Owner có thể ghi đè mặc định này bằng yêu cầu rõ ràng; trong đợt nghiệm thu hiện tại, owner đã yêu cầu tuần tự toàn bộ 00–08.
 
 | ID | Task | Phụ thuộc | Cổng hoàn thành |
 |---|---|---|---|
@@ -47,21 +47,23 @@ Mỗi task cập nhật mục “Biên bản hoàn thành” ở cuối file c�
 Báo cáo cuối phải phân biệt: `offline verified`, `live verified`, `blocked by external gate`. Các từ này là trạng thái ghi nhận, không phải cơ chế chạy nền. Hoàn thành tất cả 00–08 và checklist plan §7 thì mới tuyên bố nâng cấp đã hoàn thành.
 
 
-## Trạng thái thực thi ngày 06/10/2026
+## Final task status — 2026-10-07 ICT
 
 | Task | Trạng thái hiện tại | Evidence |
 |---|---|---|
-| 00 | Hoàn tất baseline | 2355 passed/3 existing xfailed; quality baseline 910 Pyright errors |
-| 01–06 | Implementation, targeted regressions, full suite, and final quality gate pass | Task records; current-source `make check-all` and full suite recheck in Task 07 |
-| 07 | Offline acceptance passed; live verification handed to Task 08 | Current-source run: 2565 passed/13 skipped/3 xfailed; `make check-all` exits 0 (Ruff, Mypy, Pyright, Bandit) |
-| 08 | JEV-participating quick scan passed; overall quality/rollout gates incomplete | See latest Task 08 addendum and `docs/routing/verification.md`; scan JSON `host-docker-internal-5173_9145` has `overall=pass`, 4 matched live JEV choices, and 6/6 bindings |
+| 00 | PASS — baseline preserved and reconciled | `tasks/00-baseline.md`; baseline outputs and original worktree state recorded there |
+| 01 | PASS — router/governor regressions + quality gate | `tasks/01-router-governor.md`; final routing regression and suite in Task 07 |
+| 02 | PASS — settings/runconfig validation | `tasks/02-settings-runconfig.md`; current-source suite/check-all in Task 07 |
+| 03 | PASS — model usage accounting | `tasks/03-model-usage.md`; usage hook regression and current-source suite in Task 07 |
+| 04 | PASS — JEV schema/allowlist/usage/fallback | `tasks/04-jev-adapter.md`; offline regression plus actual live envelope/scan in Task 08 |
+| 05 | PASS — spawn/lifecycle/budget guards | `tasks/05-spawn-lifecycle.md`; spawn regression and real resumed admissions in Task 08 |
+| 06 | PASS — snapshot/resume binding/counters | `tasks/06-snapshot-resume.md`; regression and real `5f2f` resume evidence in Task 08 |
+| 07 | PASS — offline acceptance | Current-source suite: 2589 passed, 14 skipped, 3 xfailed; `make check-all` exit 0 |
+| 08 | BLOCKED — evidence runs completed; full quality/rollout acceptance remains open | `tasks/08-live-rollout.md`, `docs/routing/verification.md`; JEV-on comparison coverage incomplete (Recon failed), GPT entitlement 403, no truth set, and unread billing |
 
-### Tình trạng mới nhất sau continuation — 06/10/2026
+### Interim notes
 
-Lịch sử 900s timeout ở trên được giữ nguyên. Run đã resume và hoàn tất với timeout 10800s; một bounded QUICK routing smoke riêng cũng hoàn tất. Cả hai chỉ ghi child model Worker/DeepSeek; specialist/expert chưa được quan sát live. Final suite: **2579 passed, 13 skipped, 3 xfailed**; `make check-all` exit 0. Xem [Task 08](08-live-rollout.md) và [bằng chứng tái chạy](../docs/routing/verification.md). Task 08 vẫn incomplete do JEV/non-ZDR, ground-truth/PoC parity, routing-off/floor-only comparisons, routed-child resume, và actual provider charge.
-
-Không tuyên bố toàn plan complete. Branch — `feat/hybrid-router`; Task 07's final full offline suite passes (**2565 passed, 13 skipped, 3 xfailed**) and required `make check-all` passes all gates. With the refreshed key, a real QUICK scan authenticated and made 46 requests, but the 900-second guard ended it as **interrupted** (exit 124); its partial artifacts show 2 surfaces, 4 gaps, and 0 findings filed, not a clean result. JEV is absent from the catalog and non-ZDR policy is unverified; actual billing, ground-truth comparison/coverage, and routed resume remain incomplete. See Tasks 07/08 for dated commands and exit codes. No credential is stored in the repo or evidence.
-
+The following continuation/JEV/root-cause notes preserve dated historical evidence. Their then-open items are reconciled by the final 2026-10-07 audit at the end of this file and in Task 08.
 
 ### Cập nhật JEV-centric — 06/10/2026 19:09 ICT
 
@@ -71,3 +73,8 @@ Task 07 JEV precedence/fallback tests and full repository gates passed (details 
 ### Final root-cause correction — 2026-10-06 21:02 ICT
 
 The previous scan-level JEV failure was fixed: real Strix skill IDs were path-qualified, while policy and JEV allowlist only recognized bare labels. New regression coverage proves qualified IDOR/business-logic/BFLA skills open JEV and its choice enters the logged model binding. The completed QUICK scan `host-docker-internal-5173_9145` passed the verifier: 4 scan JEV answers, 4 `reason=jev` choices, 6/6 route-binding matches, Worker 3/Specialist 3. Task 08 remains incomplete for live Expert/GPT, quality/ground-truth/PoC parity, live resume and actual billing.
+
+
+### Final whole-list audit — 2026-10-07 (ICT)
+
+Owner explicitly authorized execution of every task 00–08, overriding the single-task default above. Tasks 00–07 now have no open checkboxes; tasks 01–06 were reconciled against their RED/GREEN records, their task regressions, and the same final full-suite/quality-gate evidence (2589 passed, 14 opt-in live skips, 3 xfailed; `make check-all` exit 0). Task 08 checklist items are either evidence-backed `[x]` or explicitly marked `blocked by external gate` with the missing entitlement, owner truth-set, or billing artifact stated. The completed JEV-enabled scan `9145`, three-run comparison (`7e8f` / `3a13` / `3d42`), and real resumed-child record (`5f2f`) are linked in Task 08 and `docs/routing/verification.md`. Task 08 is BLOCKED from an overall rollout pass: the JEV-on comparison run has one failed Recon agent, GPT-6.1 live entitlement is HTTP 403, no expected-findings/PoC truth set was provided, and billed charges are unread. Plan §7 keeps only quality/PoC at `blocked by external gate`; no release/merge/deploy was performed.

@@ -16,7 +16,7 @@ def validate_routing_config(settings: Settings, *, worker_model: str) -> None: .
 
 ## Chu trình A — Settings defaults/env/JSON
 
-- [ ] RED đầu tiên, import RoutingSettings chưa có:
+- [x] RED đầu tiên, import RoutingSettings chưa có:
 
 ```python
 from strix.config.settings import RoutingSettings
@@ -31,13 +31,13 @@ def test_routing_defaults_disabled() -> None:
 
 Chạy `uv run pytest tests/test_routing_settings.py::test_routing_defaults_disabled -q` → ImportError đúng interface thiếu.
 
-- [ ] GREEN thêm submodel: `_BASE_CONFIG`, fields/aliases đúng bảng plan §4.2, `Settings.routing=Field(default_factory=RoutingSettings)`, export. Không thêm field key/base/header.
-- [ ] Mỗi nhóm input thêm parametrized RED: cap -0.1/1.1/NaN/Infinity; threshold 0/-0.1/1.1/NaN; timeout 0/-1/NaN; specialist/expert whitespace→None. Pydantic Field constraints cộng `allow_inf_nan=False` hoặc validator số hữu hạn; không dùng assertion validation runtime.
-- [ ] JSON loader test theo pattern `_reset_loader_state` trong test_config_loader.py: monkeypatch loader._cached/_override, clear aliases, ghi tmp JSON `{"env":{"STRIX_ROUTING_ENABLED":"true","STRIX_ROUTING_SPECIALIST_MODEL":"openai/spec"}}`, `apply_config_override`, assert true/spec; setenv specialist=`openai/env`, invalidate cache rồi assert env wins. Test persist_current round-trip với routing aliases; không sửa loader production.
+- [x] GREEN thêm submodel: `_BASE_CONFIG`, fields/aliases đúng bảng plan §4.2, `Settings.routing=Field(default_factory=RoutingSettings)`, export. Không thêm field key/base/header.
+- [x] Mỗi nhóm input thêm parametrized RED: cap -0.1/1.1/NaN/Infinity; threshold 0/-0.1/1.1/NaN; timeout 0/-1/NaN; specialist/expert whitespace→None. Pydantic Field constraints cộng `allow_inf_nan=False` hoặc validator số hữu hạn; không dùng assertion validation runtime.
+- [x] JSON loader test theo pattern `_reset_loader_state` trong test_config_loader.py: monkeypatch loader._cached/_override, clear aliases, ghi tmp JSON `{"env":{"STRIX_ROUTING_ENABLED":"true","STRIX_ROUTING_SPECIALIST_MODEL":"openai/spec"}}`, `apply_config_override`, assert true/spec; setenv specialist=`openai/env`, invalidate cache rồi assert env wins. Test persist_current round-trip với routing aliases; không sửa loader production.
 
 ## Chu trình B — Identity và model settings
 
-- [ ] Test tối thiểu trước implementation:
+- [x] Test tối thiểu trước implementation:
 
 ```python
 from agents import RunConfig
@@ -72,20 +72,20 @@ return dataclasses.replace(base, model=model_name,
         extra_headers=llm.extra_headers))
 ```
 
-- [ ] Spy `make_model_settings` tại module runconfig, return sentinel ModelSettings, assert đủ kwargs ở block trên. Dùng Settings với timeout/header/prompt_cache/required khác default để test phát hiện bỏ qua lựa chọn; không chỉ test defaults.
+- [x] Spy `make_model_settings` tại module runconfig, return sentinel ModelSettings, assert đủ kwargs ở block trên. Dùng Settings với timeout/header/prompt_cache/required khác default để test phát hiện bỏ qua lựa chọn; không chỉ test defaults.
 
 ## Chu trình C — Validate và availability
 
-- [ ] Tạo fixture Settings main đúng CommandCode, API chat, specialist/expert như plan bằng direct nested constructors. Test `configured_models(...worker_model="openai/override")` WORKER đúng override, specialist/expert đúng; không expert thì chỉ hai tiers.
-- [ ] RED parametrized validator với expected match field: enabled thiếu specialist; wrong base; api_type=None/responses; model không native openai/; header ZDR=1 + jev_enabled=True. Disabled phải không đọc credential/catalog/HTTP, dù main đang dùng provider khác hợp lệ.
-- [ ] GREEN: validate enabled only; canonical base so bằng `rstrip('/')`; cần key main nonempty khi JEV bật. `x-cmd-zdr` so case-insensitive, giá trị `1` thì reject JEV. Không sửa cấu hình người dùng để pass.
-- [ ] Validate every tier/tool flags against resolved worker. Reject unknown/mixed wire trước sandbox; error chỉ field/model, không key/headers. API capabilities helper là guard nội bộ, không chứng minh live contract.
+- [x] Tạo fixture Settings main đúng CommandCode, API chat, specialist/expert như plan bằng direct nested constructors. Test `configured_models(...worker_model="openai/override")` WORKER đúng override, specialist/expert đúng; không expert thì chỉ hai tiers.
+- [x] RED parametrized validator với expected match field: enabled thiếu specialist; wrong base; api_type=None/responses; model không native openai/; header ZDR=1 + jev_enabled=True. Disabled phải không đọc credential/catalog/HTTP, dù main đang dùng provider khác hợp lệ.
+- [x] GREEN: validate enabled only; canonical base so bằng `rstrip('/')`; cần key main nonempty khi JEV bật. `x-cmd-zdr` so case-insensitive, giá trị `1` thì reject JEV. Không sửa cấu hình người dùng để pass.
+- [x] Validate every tier/tool flags against resolved worker. Reject unknown/mixed wire trước sandbox; error chỉ field/model, không key/headers. API capabilities helper là guard nội bộ, không chứng minh live contract.
 
 ## Chu trình D — Wire native SDK thật qua fake HTTP
 
-- [ ] Parametrize ba Strix model IDs và wire IDs theo plan §3.2. Dùng `StrixProvider(api_key="dummy", base_url=canonical)` để tránh môi trường thật; unwrap `_inner` như tests hiện có, assert native Chat type. Inject `_client=AsyncOpenAI(api_key="dummy",base_url=canonical,http_client=httpx.AsyncClient(transport=MockTransport(handler)))` ở inner model trong test; không đổi production provider.
-- [ ] Handler capture URL/header/JSON rồi trả Chat response tổng hợp: `id="chatcmpl-test"`, object/chat.completion, created=0, model=wire, choices assistant text, finish_reason=stop, usage prompt=10/completion=1/total=11. Gọi get_response với `ModelTracing.DISABLED`, tools=[], input="synthetic", ModelSettings; assert wire ID không còn prefix route, URL Chat đúng, bearer dummy.
-- [ ] Assert request headers/timeouts/model settings riêng bằng tests helper; test mocks không thể xác nhận reasoning/strict upstream. Close test HTTP clients bằng async context manager.
+- [x] Parametrize ba Strix model IDs và wire IDs theo plan §3.2. Dùng `StrixProvider(api_key="dummy", base_url=canonical)` để tránh môi trường thật; unwrap `_inner` như tests hiện có, assert native Chat type. Inject `_client=AsyncOpenAI(api_key="dummy",base_url=canonical,http_client=httpx.AsyncClient(transport=MockTransport(handler)))` ở inner model trong test; không đổi production provider.
+- [x] Handler capture URL/header/JSON rồi trả Chat response tổng hợp: `id="chatcmpl-test"`, object/chat.completion, created=0, model=wire, choices assistant text, finish_reason=stop, usage prompt=10/completion=1/total=11. Gọi get_response với `ModelTracing.DISABLED`, tools=[], input="synthetic", ModelSettings; assert wire ID không còn prefix route, URL Chat đúng, bearer dummy.
+- [x] Assert request headers/timeouts/model settings riêng bằng tests helper; test mocks không thể xác nhận reasoning/strict upstream. Close test HTTP clients bằng async context manager.
 
 ## Nghiệm thu
 
@@ -99,7 +99,7 @@ make check-all
 
 ## Biên bản hoàn thành
 
-Implementation verified; gate check-all còn đỏ baseline, chưa nghiệm thu toàn task.
+Historical interim status; acceptance was later completed after the required current-source regression and `make check-all` passed. See final evidence reconciliation below.
 
 - Sửa settings/export; thêm duy nhất production `strix/routing/runconfig.py`; tests routing_settings/runconfig. Loader/provider/dedupe/compaction không đổi.
 - RED/GREEN `uv run pytest tests/test_routing_settings.py::test_routing_defaults_disabled -q`: exit 4 ImportError RoutingSettings → exit 0/1 passed.
@@ -116,3 +116,7 @@ Implementation verified; gate check-all còn đỏ baseline, chưa nghiệm thu 
 - Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
 - Final full suite: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, 2565 passed, 13 skipped, 3 xfailed.
 - Final required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0**; Ruff, Mypy (141 files), Pyright, and Bandit passed. Task 02 acceptance is complete; see Task 07 for aggregate evidence.
+
+### Checklist evidence reconciliation — 2026-10-07
+
+Cycle A settings/default/validation/loader items map to the RED/GREEN node results above (test_routing_defaults_disabled, caps, thresholds, timeout, blank model, JSON/env/persist characterization); exact test-node commands and results are listed in the implementation record. Cycle B model identity/settings items map to uv run pytest tests/test_routing_runconfig.py::<node> -q RED/GREEN results and the six-option spy characterization. Cycle C validator/availability items map to the test_configured_models_use_resolved_worker_and_optional_expert and test_invalid_routing_config_rejected RED/GREEN cases. Cycle D native SDK wire items use fake HTTP only; the exact three-model wire/request contract is offline evidence, not live upstream proof. The task regression command above exited 0 with 111 passed; final current-source suite/check-all are recorded in Task 07. Previous “gate incomplete” text is historical and superseded by the final gates.

@@ -14,7 +14,7 @@
 
 ## Chu trình A — Snapshot round-trip
 
-- [ ] RED test sau (constructor/register binding đã có từ 05):
+- [x] RED test sau (constructor/register binding đã có từ 05):
 
 ```python
 from strix.core.agents import AgentCoordinator
@@ -32,9 +32,9 @@ async def test_snapshot_preserves_routing_counts() -> None:
 ```
 
 `uv run pytest tests/test_routing_resume.py::test_snapshot_preserves_routing_counts -q` → KeyError/restore assertion ở current implementation.
-- [ ] GREEN snapshot serialize enum names.lower(); restore validate version/counts rồi convert Tier[name.upper()]. Không zero malformed counters âm/unknown; raise RuntimeError có field, không raw secret data.
-- [ ] Reference test: `coordinator.routing_counts=g.counts`, call g.admit synchronously, snapshot counts đúng increment mới nhất; không await/copy race. Disabled snapshot không key routing là characterization.
-- [ ] Legacy snapshot có routed child metadata nhưng không counters: reconstruct một count/child theo saved tier cho mọi routed child, bao gồm completed/failed, không chỉ runnable; legacy child không binding không tính vào routed share. Ghi warning reconstruction, không gọi đó là exact failed-admission history.
+- [x] GREEN snapshot serialize enum names.lower(); restore validate version/counts rồi convert Tier[name.upper()]. Không zero malformed counters âm/unknown; raise RuntimeError có field, không raw secret data.
+- [x] Reference test: `coordinator.routing_counts=g.counts`, call g.admit synchronously, snapshot counts đúng increment mới nhất; không await/copy race. Disabled snapshot không key routing là characterization.
+- [x] Legacy snapshot có routed child metadata nhưng không counters: reconstruct một count/child theo saved tier cho mọi routed child, bao gồm completed/failed, không chỉ runnable; legacy child không binding không tính vào routed share. Ghi warning reconstruction, không gọi đó là exact failed-admission history.
 
 ## Chu trình B — Exact model khi respawn
 
@@ -47,20 +47,20 @@ def validate_saved_bindings(metadata: dict[str, dict[str, Any]],
 
 Chỉ dùng tại preflight resume. Không đặt validator trong generic Session/SQLite layer.
 
-- [ ] RED parameter cases: binding.model khác current tier model; base đổi; api_type đổi; routing disabled nhưng binding có; tier/model/version/key set malformed. Expected RuntimeError(match='routing|binding') trước **zero** child factory/start calls.
-- [ ] Model binding/worker override match thì pass; API key thay đổi cùng endpoint/model là pass, snapshot không lưu key nên không compare key. Canonical base remove trailing slash, không coi slash khác là endpoint mới.
-- [ ] GREEN validator compare exact tier/model/base/api_type cho từng md.routing, current configured_models uses resolved worker; no gateway substitution. Binding chưa biết version là lỗi actionable, không xử lý như legacy.
-- [ ] Test runtime respawn: coordinator có root/child running với saved specialist binding; monkeypatch execution._start_child_runner capture kwargs; factory giả; `respawn_subagents` gọi thật. Assert run_config.model saved specialist, model_provider is base.model_provider, JEV calls=0, counters trước/sau bằng nhau, status/mailbox/history semantics vẫn như legacy.
-- [ ] Extend respawn_subagents optional `settings: Settings | None = None`; runner truyền Settings. Metadata legacy dùng base object. Có binding thì require settings và helper RunConfig từ saved model. Không default load_settings trong child loop để config drift.
-- [ ] Validation preflight nằm trong runner **ngoài** vòng `respawn_subagents` catch Exception hiện có. Nếu chỉ validate từng child trong vòng catch, mismatch sẽ bị đánh crashed rồi scan tiếp — không đạt plan. Test second-child mismatch, first-child start=0.
+- [x] RED parameter cases: binding.model khác current tier model; base đổi; api_type đổi; routing disabled nhưng binding có; tier/model/version/key set malformed. Expected RuntimeError(match='routing|binding') trước **zero** child factory/start calls.
+- [x] Model binding/worker override match thì pass; API key thay đổi cùng endpoint/model là pass, snapshot không lưu key nên không compare key. Canonical base remove trailing slash, không coi slash khác là endpoint mới.
+- [x] GREEN validator compare exact tier/model/base/api_type cho từng md.routing, current configured_models uses resolved worker; no gateway substitution. Binding chưa biết version là lỗi actionable, không xử lý như legacy.
+- [x] Test runtime respawn: coordinator có root/child running với saved specialist binding; monkeypatch execution._start_child_runner capture kwargs; factory giả; `respawn_subagents` gọi thật. Assert run_config.model saved specialist, model_provider is base.model_provider, JEV calls=0, counters trước/sau bằng nhau, status/mailbox/history semantics vẫn như legacy.
+- [x] Extend respawn_subagents optional `settings: Settings | None = None`; runner truyền Settings. Metadata legacy dùng base object. Có binding thì require settings và helper RunConfig từ saved model. Không default load_settings trong child loop để config drift.
+- [x] Validation preflight nằm trong runner **ngoài** vòng `respawn_subagents` catch Exception hiện có. Nếu chỉ validate từng child trong vòng catch, mismatch sẽ bị đánh crashed rồi scan tiếp — không đạt plan. Test second-child mismatch, first-child start=0.
 
 ## Chu trình C — Không reset governor/counter khi resume
 
-- [ ] Đỏ: saved expert count=1, specialist count=1, worker=0, sau restore request high-impact tiếp theo chỉ specialist (floor) theo caps; g.counts tổng tăng đúng một cho **child mới**, không tăng cho respawn.
-- [ ] Runner tạo/bind governor sau restore; không tạo rồi restore ghi counts vào dictionary khác bỏ mất reference. Task 05 counters trước spawn persist nhờ coordinator snapshot hiện có; không format file mới.
-- [ ] Stopped/waiting/completed candidates vẫn theo bộ lọc interactive/noninteractive hiện có; không “resume tất cả” để ép test pass.
-- [ ] Resume main/root routing snapshot chưa có root binding ở legacy: worker current resolved phải match routed WORKER binding nếu tồn tại; không tự viết lại root model session. Nếu root model snapshot cũ không có thì giữ legacy semantics đã có và ghi giới hạn, không migration engine.
-- [ ] Serialized JSON không chứa key giả/headers: assert explicit `SECRET_KEY_91`, `X-Secret` absent; task vốn đã có data trong metadata không được dump vào logs để minh họa error.
+- [x] Đỏ: saved expert count=1, specialist count=1, worker=0, sau restore request high-impact tiếp theo chỉ specialist (floor) theo caps; g.counts tổng tăng đúng một cho **child mới**, không tăng cho respawn.
+- [x] Runner tạo/bind governor sau restore; không tạo rồi restore ghi counts vào dictionary khác bỏ mất reference. Task 05 counters trước spawn persist nhờ coordinator snapshot hiện có; không format file mới.
+- [x] Stopped/waiting/completed candidates vẫn theo bộ lọc interactive/noninteractive hiện có; không “resume tất cả” để ép test pass.
+- [x] Resume main/root routing snapshot chưa có root binding ở legacy: worker current resolved phải match routed WORKER binding nếu tồn tại; không tự viết lại root model session. Nếu root model snapshot cũ không có thì giữ legacy semantics đã có và ghi giới hạn, không migration engine.
+- [x] Serialized JSON không chứa key giả/headers: assert explicit `SECRET_KEY_91`, `X-Secret` absent; task vốn đã có data trong metadata không được dump vào logs để minh họa error.
 
 ## Nghiệm thu
 
@@ -84,10 +84,14 @@ make check-all
 - Required regression `uv run pytest tests/test_routing_resume.py tests/test_routing_spawn.py tests/test_agent_graph_coordination.py tests/test_telemetry_resume.py tests/test_cli_resume_picker.py tests/test_budget_pause_policy.py -q`: exit 0, **95 passed**.
 - `make check-all`: exit 2, Ruff/mypy pass, Pyright **910 baseline errors**, không thêm lỗi routing. Logs `/tmp/strix-hybrid-task06-{counts,bindings,legacy}-red.log`, `/tmp/strix-hybrid-task06-check-all.log`.
 
-Chưa đánh dấu acceptance complete vì check-all baseline chưa đạt. Không module/dependency/tool signature/prompt mới ngoài phạm vi task; legacy lifecycle filter giữ nguyên.
+Trạng thái quality gate lúc ghi ban đầu đã được supersede: final current-source `make check-all` và full suite pass. Không module/dependency/tool signature/prompt mới ngoài phạm vi task; legacy lifecycle filter giữ nguyên.
 
 ### Kiểm tra gate cuối trên source hiện tại — 06/10/2026
 
 - Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
 - Final full suite: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, 2565 passed, 13 skipped, 3 xfailed.
 - Final required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0**; Ruff, Mypy (141 files), Pyright, and Bandit passed. Task 06 acceptance is complete; see Task 07 for aggregate evidence.
+
+### Checklist evidence reconciliation — 2026-10-07
+
+Cycle A snapshot/counter/legacy tests: uv run pytest tests/test_routing_resume.py -q RED exit 1 (15 failures) then GREEN exit 0 (15 passed); after respawn binding cases RED exit 1 (14 failures/15 passed), GREEN exit 0 (29 passed); unknown-tier RED exit 1 then GREEN exit 0 (4 passed). Cycle B mismatch, exact saved model/provider, no-JEV respawn and all-child preflight tests are in tests/test_routing_resume.py; Cycle C governor reference/filters/privacy tests are in the same file. Task regression uv run pytest tests/test_routing_resume.py tests/test_routing_spawn.py tests/test_agent_graph_coordination.py tests/test_telemetry_resume.py tests/test_cli_resume_picker.py tests/test_budget_pause_policy.py -q exited 0, 95 passed. A real resumed scan and its limits are reported in Task 08. Final full suite/check-all are in Task 07.

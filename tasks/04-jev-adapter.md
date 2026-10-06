@@ -17,7 +17,7 @@ class JevClient:
 
 ## Chu trình A — Request/response hợp lệ
 
-- [ ] Đặt fixture dưới trong test file (số synthetic):
+- [x] Đặt fixture dưới trong test file (số synthetic):
 
 ```python
 VALID = {"model": "typesafe/jev", "answers": {"route_tier": {
@@ -26,7 +26,7 @@ VALID = {"model": "typesafe/jev", "answers": {"route_tier": {
     "usage": {"input_tokens": 180, "output_tokens": 3}}
 ```
 
-- [ ] Viết RED test:
+- [x] Viết RED test:
 
 ```python
 import json
@@ -58,16 +58,16 @@ async def test_jev_wire_and_result() -> None:
     assert (usage[0].requests, usage[0].total_tokens) == (1, 183)
 ```
 
-- [ ] `uv run pytest tests/test_routing_jev.py::test_jev_wire_and_result -q` → ModuleNotFoundError đúng module chưa có.
-- [ ] GREEN implement trong một module: URL `base_url.rstrip('/')+'/systemone'`; headers auth/content-type; POST json đúng plan §3.3; `timeout=self._timeout_s`; `response.raise_for_status()`; parse usage trước answer; on_usage once; return DecisionResult.
-- [ ] Instructions/criteria copy từ plan §3.3 làm hằng nhỏ trong module; không prompt builder class. Typed parse dùng `isinstance(value,(int,float)) and not isinstance(value,bool)` + math.isfinite, int tokens reject bool. Không dùng float('bad') có đường normalize thành số 0.
+- [x] `uv run pytest tests/test_routing_jev.py::test_jev_wire_and_result -q` → ModuleNotFoundError đúng module chưa có.
+- [x] GREEN implement trong một module: URL `base_url.rstrip('/')+'/systemone'`; headers auth/content-type; POST json đúng plan §3.3; `timeout=self._timeout_s`; `response.raise_for_status()`; parse usage trước answer; on_usage once; return DecisionResult.
+- [x] Instructions/criteria copy từ plan §3.3 làm hằng nhỏ trong module; không prompt builder class. Typed parse dùng `isinstance(value,(int,float)) and not isinstance(value,bool)` + math.isfinite, int tokens reject bool. Không dùng float('bad') có đường normalize thành số 0.
 
 ## Chu trình B — Allowlist, không gửi task
 
-- [ ] Tạo test body capture với `Envelope(task="https://private.test/a?token=abc XYZ_SECRET_921", skills=("business_logic","XYZ_SECRET_921"), attempts=2, severity="high")`.
-- [ ] RED: `json.loads(body['state'])` **bằng** dict `{"skills":["business_logic"],"attempts":2,"severity":"high","task_length_bucket":"short"}`; task/token/hostname/custom skill không có trong body. Đừng chỉ tìm chữ password.
-- [ ] GREEN serializer: normalize lower skills, giữ membership `HIGH_IMPACT|AMBIGUOUS`, sorted unique; severity lower thuộc low/medium/high/critical hoặc null; attempts int>=0 hoặc reject invalid; bucket đo len(task), không substring/hash. Không nhận dictionary linh hoạt từ callers.
-- [ ] Boundary tests lengths 256/257/2048/2049 → short/medium/medium/long. Unsupported question → ValueError và zero requests/usage. Không gửi notes/tools/finding data vì Envelope không cần chúng.
+- [x] Tạo test body capture với `Envelope(task="https://private.test/a?token=abc XYZ_SECRET_921", skills=("business_logic","XYZ_SECRET_921"), attempts=2, severity="high")`.
+- [x] RED: `json.loads(body['state'])` **bằng** dict `{"skills":["business_logic"],"attempts":2,"severity":"high","task_length_bucket":"short"}`; task/token/hostname/custom skill không có trong body. Đừng chỉ tìm chữ password.
+- [x] GREEN serializer: normalize lower skills, giữ membership `HIGH_IMPACT|AMBIGUOUS`, sorted unique; severity lower thuộc low/medium/high/critical hoặc null; attempts int>=0 hoặc reject invalid; bucket đo len(task), không substring/hash. Không nhận dictionary linh hoạt từ callers.
+- [x] Boundary tests lengths 256/257/2048/2049 → short/medium/medium/long. Unsupported question → ValueError và zero requests/usage. Không gửi notes/tools/finding data vì Envelope không cần chúng.
 
 ## Chu trình C — Malformed answer/usage
 
@@ -83,16 +83,16 @@ Dùng `copy.deepcopy(VALID)` trong test parametrized, mỗi case sửa chính m�
 | Missing usage, tokens -1/True/1.5/string | ValueError, không fake count |
 | Field top-level extra | PASS, future-compatible |
 
-- [ ] Sum valid tolerance <=0.01; test .009 accepted/.011 rejected, tránh float equality sát boundary.
-- [ ] Usage hợp lệ + answer malformed → on_usage vẫn một lần rồi ValueError. Usage malformed → không record số bịa. JSON không parse được/HTTP lỗi → không biết charge, không gọi là miễn phí.
-- [ ] `requests=1`, `input_tokens`, `output_tokens`, `total_tokens=input+output` khi tạo agents.usage.Usage.
+- [x] Sum valid tolerance <=0.01; test .009 accepted/.011 rejected, tránh float equality sát boundary.
+- [x] Usage hợp lệ + answer malformed → on_usage vẫn một lần rồi ValueError. Usage malformed → không record số bịa. JSON không parse được/HTTP lỗi → không biết charge, không gọi là miễn phí.
+- [x] `requests=1`, `input_tokens`, `output_tokens`, `total_tokens=input+output` khi tạo agents.usage.Usage.
 
 ## Chu trình D — Errors, privacy và cancellation
 
-- [ ] Parametrize status 400/401/403/422/429/500/502/503/504: one request, no retry; adapter raises HTTPStatusError; qua router thì tier floor/reason jev_error. Transport raise httpx.ReadTimeout → floor; CancelledError phải propagate.
-- [ ] Handler response error chứa `SERVER_SECRET_82`; request key=`KEY_SECRET_51`; caplog ở router mức error: hai chuỗi không có trong log. Đổi router `logger.exception` sang `logger.warning("JEV routing failed (%s); using rule floor", type(exc).__name__)` nếu stack/text đang lộ body. Không log exception repr/full response/request.
-- [ ] Test callback chỉ nhận Usage, không có task/key, một lần. Callback lỗi kế toán không được retry HTTP; runner callback giống hook hiện có: logger tên agent/error class, không secret. Không biến lỗi kế toán thành call thêm.
-- [ ] Header ZDR policy phải được reject từ startup Task 02/05; adapter không nhận extra_headers main và không tự gỡ header rồi retry. Không set x-cmd-zdr=0.
+- [x] Parametrize status 400/401/403/422/429/500/502/503/504: one request, no retry; adapter raises HTTPStatusError; qua router thì tier floor/reason jev_error. Transport raise httpx.ReadTimeout → floor; CancelledError phải propagate.
+- [x] Handler response error chứa `SERVER_SECRET_82`; request key=`KEY_SECRET_51`; caplog ở router mức error: hai chuỗi không có trong log. Đổi router `logger.exception` sang `logger.warning("JEV routing failed (%s); using rule floor", type(exc).__name__)` nếu stack/text đang lộ body. Không log exception repr/full response/request.
+- [x] Test callback chỉ nhận Usage, không có task/key, một lần. Callback lỗi kế toán không được retry HTTP; runner callback giống hook hiện có: logger tên agent/error class, không secret. Không biến lỗi kế toán thành call thêm.
+- [x] Header ZDR policy phải được reject từ startup Task 02/05; adapter không nhận extra_headers main và không tự gỡ header rồi retry. Không set x-cmd-zdr=0.
 
 ## Nghiệm thu
 
@@ -109,7 +109,7 @@ make check-all
 
 Task 07 phát hiện thêm regression malformed choice list/dict: `uv run pytest tests/test_routing_jev.py::test_malformed_answer_rejected_with_usage -q` RED exit 1, 2 failed/17 passed (TypeError unhashable). Thêm guard string, cùng lệnh GREEN exit 0, 19 passed; `uv run pytest tests/test_routing_jev.py tests/test_routing_router.py -q` exit 0, 69 passed. Usage vẫn ghi một lần và malformed response fallback đúng exception contract. Log `/tmp/strix-hybrid-task04-choice-red.log`.
 
-Implementation verified, check-all baseline chưa đạt.
+Historical interim status; acceptance was later completed after the required current-source regression and `make check-all` passed. See final evidence reconciliation below.
 
 - Thêm production module thứ hai `strix/routing/jev.py`, test_routing_jev; router log error class và catch network/parse RuntimeError/ValueError/TimeoutError/httpx.HTTPError, không log raw exception/body/key.
 - RED/GREEN `uv run pytest tests/test_routing_jev.py::test_jev_wire_and_result -q`: exit 4 ModuleNotFoundError → exit 0/1 passed.
@@ -131,3 +131,7 @@ Implementation verified, check-all baseline chưa đạt.
 ### Namespace-aware allowlist follow-up — 2026-10-06 21:02 ICT
 
 Actual scan declarations use IDs such as `vulnerabilities/business_logic`; before this correction the adapter's bare-label allowlist discarded them. The adapter now shares policy's canonical skill-label normalizer and still sends only the intersection with `HIGH_IMPACT | AMBIGUOUS`. Runner-level mocked-transport regression asserts the wire model `typesafe/jev`, question `route_tier`, and state label `idor`; no task, URL, or secret was added to JEV state. Test-first RED/GREEN command and exits are recorded in Task 01 and [verification.md](../docs/routing/verification.md).
+
+### Checklist evidence reconciliation — 2026-10-07
+
+Cycle A request/result contract: uv run pytest tests/test_routing_jev.py::test_jev_wire_and_result -q RED exit 4 (module absent), GREEN exit 0 (1 passed). Cycle B allowlist, question rejection, attempts, buckets and namespace normalization map to the named RED/GREEN tests above. Cycle C parser/usage boundary nodes map to test_malformed_answer_rejected_with_usage and test_malformed_usage_not_recorded; the malformed list/dict-choice fix has its own RED exit 1 (2 failures) then GREEN exit 0 (19 passed), /tmp/strix-hybrid-task04-choice-red.log. Cycle D transport/no-retry/privacy/cancellation/callback/ZDR tests are in tests/test_routing_jev.py and router regressions. Task regression exited 0 with 94 passed and 2 existing warnings. Live envelope evidence and the later one-call timeout are separately and honestly recorded in Task 08; offline parser tests are not used as live proof. Final full suite/check-all are in Task 07.

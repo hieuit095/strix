@@ -6,7 +6,7 @@
 
 ## Chu trình A — Tên model
 
-- [ ] Thêm test tự đủ imports sau vào cost test:
+- [x] Thêm test tự đủ imports sau vào cost test:
 
 ```python
 from types import SimpleNamespace
@@ -32,8 +32,8 @@ async def test_hook_records_actual_child_model() -> None:
 
 SimpleNamespace chỉ fake response/agent shape theo hook, không fake hook behavior; nếu type checks test yêu cầu cast, dùng fixture SDK thật hoặc cast đúng boundary, không suppress whole file.
 
-- [ ] RED `uv run pytest tests/test_cost_tracking.py::test_hook_records_actual_child_model -q` → actual model vẫn worker.
-- [ ] GREEN:
+- [x] RED `uv run pytest tests/test_cost_tracking.py::test_hook_records_actual_child_model -q` → actual model vẫn worker.
+- [x] GREEN:
 
 ```python
 raw_model = ctx.get(MODEL_KEY)
@@ -42,12 +42,12 @@ actual_model = raw_model if isinstance(raw_model, str) and raw_model.strip() els
 ```
 
 Đặt MODEL_KEY cạnh LLM_TURN_KEY; không normalize model ID hoặc dùng settings main để thay actual.
-- [ ] Cùng node xanh.
+- [x] Cùng node xanh.
 
 ## Chu trình B — Fallback và guard cũ
 
-- [ ] Parametrize raw_model `None`, `""`, `"   "`, `123`, `{}`; same hook setup, assert worker fallback. Thiếu key riêng là characterization compatibility, ghi đúng loại.
-- [ ] Actual usage record một lần; `report_state=None` vẫn no-op; giữ budget exceptions/cost checks nguyên vẹn. Chạy regression budget, không sửa để model change né budget.
+- [x] Parametrize raw_model `None`, `""`, `"   "`, `123`, `{}`; same hook setup, assert worker fallback. Thiếu key riêng là characterization compatibility, ghi đúng loại.
+- [x] Actual usage record một lần; `report_state=None` vẫn no-op; giữ budget exceptions/cost checks nguyên vẹn. Chạy regression budget, không sửa để model change né budget.
 
 ```bash
 uv run pytest tests/test_cost_tracking.py tests/test_budget_pause_policy.py tests/test_e2e_budget_lifecycle.py tests/test_pricing.py -q
@@ -62,7 +62,7 @@ make check-all
 
 ## Biên bản hoàn thành
 
-Implementation verified, quality gate baseline chưa đạt; chưa tick hoàn thành toàn task.
+Historical interim status; acceptance was later completed after the required current-source regression and `make check-all` passed. See final evidence reconciliation below.
 
 - Sửa hooks MODEL_KEY/model lookup duy nhất; thêm tests vào cost_tracking, không ledger/pricing/report format mới.
 - RED/GREEN `uv run pytest tests/test_cost_tracking.py::test_hook_records_actual_child_model -q`: exit 1 (worker != MiMo), cùng node exit 0/1 passed.
@@ -76,3 +76,7 @@ Implementation verified, quality gate baseline chưa đạt; chưa tick hoàn th
 - Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
 - Final full suite: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, 2565 passed, 13 skipped, 3 xfailed.
 - Final required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0**; Ruff, Mypy (141 files), Pyright, and Bandit passed. Task 03 acceptance is complete; estimated usage remains distinct from billing.
+
+### Checklist evidence reconciliation — 2026-10-07
+
+Cycle A RED/GREEN: uv run pytest tests/test_cost_tracking.py::test_hook_records_actual_child_model -q exited 1 for Worker-vs-MiMo, then 0 (1 passed) after the hook used the child context model. Cycle B fallback/once/budget characterization is covered by uv run pytest tests/test_cost_tracking.py tests/test_budget_pause_policy.py tests/test_e2e_budget_lifecycle.py tests/test_pricing.py -q → exit 0, 51 passed, 2 existing Pydantic warnings (recorded above). MODEL_KEY selects the actual token-accounting model; it does not assert provider billing. Final full-suite/check-all results are recorded in Task 07.

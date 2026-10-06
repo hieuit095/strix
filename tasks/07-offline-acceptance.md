@@ -54,7 +54,7 @@ Ghi exit codes/số tests thật. `git diff` không hiển thị untracked: mở
 
 ## Biên bản hoàn thành
 
-Đã hoàn tất phần implementation/documentation và các kiểm chứng độc lập. Acceptance toàn task **chưa đạt**; không tick full check-all/live.
+Historical interim status; final acceptance below supersedes it: current-source full suite and `make check-all` passed. Live checks remain separately gated in Task 08.
 
 - Files: `strix/routing/jev.py`, tests/test_routing_jev.py, test_routing_runconfig.py, test_routing_spawn.py, docs/routing/README.md; biên bản task 04 ghi regression đúng task sở hữu.
 - Task 04 RED malformed choice list/dict: `uv run pytest tests/test_routing_jev.py::test_malformed_answer_rejected_with_usage -q` exit 1, 2 failed/17 passed (TypeError). Guard string → cùng node exit 0, 19 passed. Resume kiểm cả node fallback: `UV_CACHE_DIR=/tmp/strix-uv-cache uv run --offline pytest tests/test_routing_jev.py::test_malformed_answer_rejected_with_usage tests/test_routing_jev.py::test_non_string_choice_falls_back_safely -q` exit 0, **21 passed**. List/dict → SPECIALIST/jev_error, usage 183 tokens ghi một lần.
@@ -67,7 +67,7 @@ Ghi exit codes/số tests thật. `git diff` không hiển thị untracked: mở
 - Docs đối chiếu 9 alias/default/constraints với Settings, prefix/wire, shared credentials, floor/cap, metadata/ZDR, resume/rollback, estimator limitations và live prerequisites. Không claim live billing/quality.
 - **Commit BLOCKED:** requested `git add ... && git ... commit` exit **128**, `.git/index.lock` read-only theo permission profile mới. Branch vẫn feat/hybrid-router, HEAD 061646b; không push, không đổi branch hoặc bypass restriction.
 
-Gate còn thiếu: Git writable; môi trường test/type discovery hoạt động; baseline Pyright quality failure phải xử lý trước full acceptance. Chưa đánh dấu Task 07 complete. Tiếp tục offline Task 08 theo owner instruction; live quality/rollout vẫn phụ thuộc gates này.
+Interim blockers resolved for offline acceptance. Current final suite/check-all results are recorded in the 2026-10-07 re-audit below; live quality/rollout gates remain in Task 08.
 
 ### Kết quả cập nhật 06/10/2026
 
@@ -221,3 +221,10 @@ Environment diagnostic riêng: config Pyright tạm dưới /tmp giữ nguyên s
 - `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_*.py -q` → exit **0**, **251 passed, 13 skipped**.
 - `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, **2589 passed, 13 skipped, 3 xfailed, 106 warnings**.
 - `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0** (Ruff, mypy, Pyright, Bandit).
+
+### Final re-audit after live-envelope regression — 2026-10-07 ICT
+
+- Current focused routing regression: UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_types.py tests/test_routing_policy.py tests/test_routing_governor.py tests/test_routing_router.py tests/test_routing_settings.py tests/test_routing_runconfig.py tests/test_routing_jev.py tests/test_routing_spawn.py tests/test_routing_resume.py tests/test_routing_live.py -q → exit **0**, **234 passed, 14 skipped** (live-only gated tests).
+- Final source suite including the strengthened test_live_jev_envelope_contract: UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 600s uv run --offline pytest -q -o faulthandler_timeout=30 → exit **0**, **2589 passed, 14 skipped, 3 xfailed, 106 warnings**, 379.02 seconds. The 14 skips are opt-in live tests; they are not live pass evidence.
+- Final quality gate: UV_CACHE_DIR=/tmp/strix-uv-cache timeout 300s make check-all → exit **0**. Ruff format/check passed; mypy passed for 141 files; Pyright reported 0 errors; Bandit reported no issues.
+- New test-only change: tests/test_routing_live.py::test_live_jev_envelope_contract captures one live /systemone request when explicitly opted in and asserts fixed typesafe/jev + route_tier choice schema, canonical allowlist-only state, finite three-tier probabilities, valid once-only usage, and no marker/key in body or logs. The offline recheck skips it before network unless opted in. A later separately opted-in rerun ended with a transport httpx.ConnectTimeout before the assertions; that failed attempt is not represented as a pass. See Task 08 for the successful prior live capture, JEV-on scan decisions, and limits.

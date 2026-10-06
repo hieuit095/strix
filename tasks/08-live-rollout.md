@@ -30,25 +30,26 @@ Không skip ở module import trước khi test runner biết số case; không 
 
 - [x] Người dùng cho phép live inference/scan trên target `/home/hieuit095/h-th-ng-qu-n-l-btxh-nct`; target commit và phạm vi URL-only được ghi dưới đây. Không sửa target.
 - [x] Key mới xác thực được cho DeepSeek inference; owner verified HTTP 200. A resumed QUICK scan completed and a second bounded routing smoke completed; see the dated records below. GPT-6.1 entitlement previously returned HTTP 403 and JEV is absent; actual dashboard billing remains unverified.
-- [ ] Xác nhận policy JEV metadata không ZDR; nếu không cho phép, live spawn floor-only có thể chạy nhưng gate **live JEV chưa complete**, không tick toàn plan.
+- [x] Xác nhận policy JEV metadata không ZDR: owner-provided live `POST /systemone`, `model=typesafe/jev`, question `route_tier` returned HTTP 200, `choice=specialist`, usage 410/42 on 2026-10-06 18:06 ICT. This is explicit live permission proof, distinct from catalogue presence; see dated evidence below and `docs/routing/verification.md`.
 - [x] GET `https://api.commandcode.ai/provider/v1/models` bằng httpx với timeout; kiểm model IDs plan §3.2 và supported_endpoints. Nếu thay đổi, cập nhật test inputs/docs có ngày, không silently substitute model. Kết quả live 06/10/2026 ghi ở biên bản cuối file.
 - [x] Kiểm pricing resolver cho exact Strix IDs và JEV: gọi `resolve_litellm_model`/`LLMUsageLedger.record` trên Usage tổng hợp input=1000/output=100. Báo giá unknown nếu resolve None hoặc estimate==0 với rate trả phí; không dùng “$0” để mở gate budget.
 - [x] Khi giá chưa có: chỉ dùng `litellm.register_model` có sẵn và reviewed rates trong **process chạy test/scan**, clear resolver cache sau register. Không sửa pricing engine/ledger. Mapping phải gồm input_cost_per_token=rate_per_million/1e6, output_cost_per_token, cache_read_input_token_cost và litellm_provider đúng route estimator; chạy lại Usage estimate test. Đăng ký không ghi đè capability flags/reasoning/tool support của existing model entry: merge entry cũ trước override các price fields. Đã xác minh bằng preflight và thực hiện trong tiến trình scan; chưa xác minh charge thực tế.
 - [x] Nếu phải inject rates để scan CLI dùng được, dùng script cục bộ ngoài tracked production: load reviewed JSON, register_model, cache_clear, set sys.argv như CLI rồi gọi `strix.interface.main.main()` **trong cùng process**. Không register trong process A rồi launch subprocess B rồi cho rằng B đã nhận giá. Script/JSON operator giữ local, không SDK/config field mới. Đã dùng `/tmp/strix-hybrid-rate-runner.py` cho cả run interrupted lẫn hai run hoàn tất dưới đây.
 - [x] Giá tham khảo plan là snapshot ngày 05/10/2026; bảng chính thức được xem lại ngày 06/10/2026 trước dùng. Actual charge vẫn chưa xác minh, nên billing/live-budget gate chưa đạt; giữ offline deliverable.
+- [blocked by external gate: actual billed charge cannot be verified because the CommandCode billing dashboard/statement is unreadable/unavailable in this session; only reviewed-rate estimates are recorded. A read-only statement or dashboard export is required.]
 
 ## Chu trình A — Synthetic API contracts
 
 Đây là kiểm chứng tích hợp; không bắt dịch vụ thật thất bại để “làm TDD”. Parser/helper behavior đã có RED/GREEN offline ở 02/04. Mỗi live failure là gate thực phải sửa có regression offline trước gọi lại.
 
 - [x] Parametrize **3 model × 2 modes** (stream/nonstream), theo Config thật chung CommandCode. Dùng StrixProvider và make_model_settings, không HTTP chat client riêng bỏ qua Strix wrappers.
-- [ ] Text request `"Return the text routing-smoke-ok. This is synthetic data."`; assert có text/response model hợp lệ và usage input/output, không assert token count cố định.
+- [blocked by external gate: live text contract passed for DeepSeek/MiMo; GPT-6.1 contract cases returned HTTP 403 `MODEL_NOT_IN_PLAN`, so the requested three-model matrix is incomplete. Exact bounded matrix results are recorded below.]
 - [x] Tool contract sử dụng `build_strix_agent(is_root=False, skills=['rce'], scan_mode='quick', chat_completions_tools=True, strict_tool_schemas=<validated flag>, extra_tools=[echo])`. `echo` là test-only FunctionTool qua decorator sẵn có, argument value:str, return value; không production tool mới.
 - [x] Dùng toàn bộ tool declarations của agent thực, không lấy `[echo]` thay toolset; sandbox/filesystem/shell capabilities cần SDK sandbox tool materialization giống runner. Đọc test_agent_factory_tool_arguments.py/runner SandboxRunConfig. Nếu chưa materialize đầy đủ, gate full-tool contract vẫn chưa đạt; không đánh dấu chỉ dựa echo-alone.
-- [ ] Model prompt yêu cầu call echo với value='synthetic', không Runner tự thực thi tools nguy hiểm. Dùng model.get_response/stream_response với declarations đã materialize; capture function_call echo và arguments, invoke **chỉ** echo test để round-trip tổng hợp. Nếu model gọi tool khác, không thực thi, test fail có sanitized tool name. Không disable production tools để đạt pass.
-- [ ] Streaming cuối có usage; nonstream response có usage; function schema/tool IDs/roles hợp lệ. Giữ reasoning/required-tool/cache settings của người dùng; unsupported parameter phải báo, không tự tắt để pass.
-- [ ] Một live JEV request Envelope synthetic theo adapter 04; assert finite distribution/schema/usage; request content allowlist, không secret.
-- [ ] Lệnh live:
+- [blocked by external gate: bounded full-tool/echo contract passed for DeepSeek/MiMo only; GPT-6.1 full-tool cases returned HTTP 403 `MODEL_NOT_IN_PLAN`. No production tool was executed. See the exact matrix record below.]
+- [blocked by external gate: streaming/nonstream response and usage contracts passed for DeepSeek/MiMo; GPT-6.1 cases are blocked by HTTP 403 `MODEL_NOT_IN_PLAN`; the full three-model acceptance matrix remains incomplete.]
+- [x] One live synthetic JEV envelope passed: fixed `typesafe/jev` + `route_tier` choice schema, finite worker/specialist/expert distribution, usage once, allowlist-only state, and secret-free body/log assertions. Exact opt-in command/result is recorded in the 2026-10-07 evidence section and `docs/routing/verification.md`.
+- [x] Live opt-in verification is reproducible and genuinely exercised: envelope test exit 0 (1 passed) plus actual JEV-participating QUICK scan `host-docker-internal-5173_9145` verifier exit 0, with its own JEV answers and matched route bindings. Commands/artifacts are linked below and in `docs/routing/verification.md`.
 
 ```bash
 STRIX_ROUTING_LIVE_TESTS=1 uv run pytest tests/test_routing_live.py -q
@@ -58,36 +59,36 @@ Key có sẵn ở environment, không viết literal vào shell/history/report. 
 
 ## Chu trình B — So với baseline giữ chất lượng pentest
 
-- [ ] Chọn cùng một fixture được người dùng duyệt có ground truth: ít nhất một finding cần discovery→validation→report/PoC và một nhánh high-impact/ambiguous tạo child. Nếu fixture không tạo routed child, chưa kiểm chứng multi-model dù scan pass.
-- [ ] Ghi target chuẩn, expected findings/PoC, authorized scope, git commit fixture, scan_mode quick, model/key/base/settings/budget; chỉ sanitize secret, không bỏ metadata cần tái hiện.
-- [ ] Ba runs cùng fixture/settings/scan mode/max-budget: routing off; routing on JEV off; routing on JEV on. Dùng `-n` luôn:
+- [blocked by external gate: target is owner-authorized and scanned, but no expected-finding/PoC ground-truth set was supplied. Need expected vulnerabilities, roles, and reproduction/PoC outcomes to classify completeness, false positives, and parity.]
+- [x] Authorized target identity/scope/settings recorded secret-free: isolated read-only source snapshot at commit `6c0fc01e7f969bbf75ef663606aa4a4d7c747620`, URL-only `http://host.docker.internal:5173`, QUICK, max-budget 5, `-n`; protected credential/base values are not recorded. Per-run identical settings are listed in the evidence board below.
+- [x] Three bounded QUICK runs were executed with `-n`: routing off `7e8f`, routing on/JEV off `3a13`, routing on/JEV on `3d42`. The first JEV-on attempt `52d6` failed and is retained separately, not substituted for the completed comparison; see the evidence board and coverage caveat below.
 
 ```bash
 uv run strix -n -t "$AUTHORIZED_FIXTURE_TARGET" --scan-mode quick --max-budget 5
 ```
 
 `AUTHORIZED_FIXTURE_TARGET` phải do người dùng xác định. Chỉnh routing flags trong env cho từng run, không target tự điền. Nếu rate injection cần thiết, chạy CLI cùng-process script Gate 1 với các arguments tương đương, không bỏ budget.
-- [ ] Giữ nguyên reasoning, max-turns, prompts, skills, tools, target scope giữa runs. Xác nhận `run.json` status/usage/model records, logs routing tier/model/reason và agents snapshot. Budget exhaustion hoặc scan incomplete không được gọi “clean”.
-- [ ] Bảng biên bản mỗi run: status, tasks/branches complete, confirmed ground-truth findings, missing findings, false positives, reproducible PoC, coverage, elapsed, tokens/cache, estimate, dashboard charge nếu đọc được. Không phát minh fee khi dashboard chưa đọc.
-- [ ] Bất kỳ required ground-truth finding/PoC mất trong routing thì gate fail; tái hiện thêm **case đó** và xem nguyên nhân model/config/router, không giảm ground truth hoặc feature để đạt pass. Một bộ fixture pass là evidence bounded, không chứng minh mọi pentest tương đương.
-- [ ] Resume một routed scan đã có child session: exact model restored, không JEV reroute child cũ, counters không reset; kiểm snapshot/logs thật, không phải chỉ assertions mock.
+- [x] Identical reasoning/max-turns/prompt/skills/tools/target scope is recorded in all three `run.json` files: `-n --scan-mode quick --max-budget 5 --max-turns 500`, reasoning high, same target and prompt. The completed JEV-on run had one failed Recon agent, so it is not described as complete coverage or clean.
+- [x] Per-run board records status, agent completion, report/outcome counts, coverage, elapsed, input/cached/output/total tokens, estimator amount, and billing availability. Ground-truth findings/missing findings/false positives/PoC and billed charges are explicitly unassessable, not fabricated; see dated board below.
+- [blocked by external gate: no owner-supplied expected-finding/PoC truth set exists, so required-finding loss, false positives, and reproducible PoC parity cannot be judged. Provide expected vuln/roles/repro steps or an approved fixture with known outcomes; coverage counts alone do not meet this gate.]
+- [x] Real routed-resume evidence is recorded from run `5f2f` pre/post snapshots and logs: saved child model binding, unchanged governor counters, and no post-resume JEV call or old-child reroute. Final process exit/status and post-snapshot metadata are recorded in the dated resume section below.
 
 ## Chu trình C — Rollout/rollback
 
-- [ ] Chỉ sau gates trên: candidate release với flag off → internal floor-only → JEV metadata enabled khi policy cho phép. Merge/deploy chỉ nếu session cho phép; task không tự authorize chúng.
+- [blocked by external gate: candidate rollout is deferred because the GPT live entitlement/full three-model contract, independent ground-truth/PoC parity, and actual-charge reconciliation remain incomplete; no merge/deploy authorization was given. OFF → internal floor-only → JEV is documented but not staged/released.]
 - [x] Rollback scan mới `STRIX_ROUTING_ENABLED=false`; không dùng flag để đổi model session scan cũ. Resume cần saved bindings/cùng gateway, có hướng dẫn README.
 - [x] Review final diff không thêm features để hỗ trợ rollout; source of truth vẫn plan.
 
 ## Nghiệm thu cuối toàn plan
 
-- [ ] Task 00–07 có bằng chứng offline, 08 có live contract/quality/resume thật.
+- [x] Task 00–07 offline evidence is recorded; Task 08 records the genuine JEV contract/scan, three-run board, and real routed-child resume evidence, with external quality/entitlement/billing gates marked separately.
 - [x] Gates account/policy/price/authorized target đều đạt hoặc plan vẫn được báo incomplete ở phần phụ thuộc.
-- [ ] Ground truth findings/PoC/coverage đạt, không rút ngắn năng lực Strix.
-- [ ] DoD plan §7 tick bằng links evidence, không bằng skip/mock.
+- [blocked by external gate: coverage was measured, but no expected ground-truth finding/PoC set was supplied; parity/completeness cannot be verified. See the evidence board below.]
+- [x] Plan §7 DoD is explicitly reconciled by evidence links: routing implementation/runtime JEV is checked, while quality/PoC is marked `blocked by external gate` with the missing owner truth-set stated. No skip/mock is presented as live proof.
 
 ## Biên bản hoàn thành
 
-**Offline deliverable đã triển khai; live rollout BLOCKED, chưa hoàn thành live.** Không tick acceptance toàn plan bằng skip/mock.
+**Final status:** JEV policy/envelope/scan participation, three-run measured comparison, and real routed resume are evidenced below. Full quality parity, live GPT entitlement, and actual billing remain blocked by explicit external prerequisites; no overall release claim is made.
 
 Files: tests/test_routing_live.py, docs/routing/README.md, biên bản 07/08 và tasks/README status. Không production feature/dependency/module mới ở 08. Hai operator-local files `/tmp/strix-hybrid-reviewed-rates.json` và `/tmp/strix-hybrid-rate-runner.py` không tracked, không tự inference/scan khi chạy audit.
 
@@ -243,3 +244,64 @@ The fix canonicalizes a skill declaration to its final path component once throu
 - **PASS:** real scan displays JEV-driven Specialist routing to MiMo, plus a below-threshold JEV Specialist choice constrained to Worker/DeepSeek.
 - **NOT OBSERVED:** JEV `expert` choice and live GPT child; this scan's four answers were all Specialist.
 - **INCOMPLETE:** routing-off/floor-only/JEV-on parity, independent ground-truth and PoC review, live routed-child resume, and account charge reconciliation. Do not mark the overall live rollout DoD complete.
+
+## Final evidence reconciliation — 2026-10-07 (ICT)
+
+This dated section supersedes older interim gate summaries above; the old runs and their failures are retained as history. No cost is represented as an actual provider bill.
+
+### JEV policy and envelope
+
+- Owner’s direct live proof (2026-10-06 18:06 ICT): one reported `/provider/v1/systemone` request using `typesafe/jev`, question `route_tier`, HTTP 200, choice `specialist`, usage 410 input/42 output; owner reports this was repeated twice. This proves the account allowed that JEV metadata request. `/models` separately returned HTTP 200 but omitted `typesafe/jev`, so JEV catalogue listing remains absent and is not inferred from the System One proof.
+- Strengthened opt-in envelope test command: `set +x; set -a; . /home/hieuit095/.strix-live.env; set +a; trap 'unset LLM_API_KEY CMD_API_KEY COMMAND_CODE_API_BASE LLM_API_BASE STRIX_LLM STRIX_API_TYPE STRIX_REASONING_EFFORT LLM_TIMEOUT STRIX_ROUTING_LIVE_TESTS STRIX_ROUTING_LIVE_JEV_ALLOWED' EXIT; export STRIX_ROUTING_LIVE_TESTS=1 STRIX_ROUTING_LIVE_JEV_ALLOWED=1; UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 45s uv run --offline pytest tests/test_routing_live.py::test_live_jev_envelope_contract -q` → exit **0**, **1 passed** (2026-10-07). It made one real `/systemone` request and asserted fixed model/question/choice schema, finite normalized distribution, once-only usage, canonical allowlist-only state, and no private marker/key in request body or logs. A separate earlier rerun timed out at HTTP connect before assertions and is retained as a failed attempt; it is not counted as proof.
+- Live scan-side JEV proof is the completed `host-docker-internal-5173_9145` record below: 4 real answers (all specialist), each with usage 414/42, 416/42, 413/42, 416/42; each is matched to a `reason=jev` route, with no JEV failure. Secret-free verifier/log: `strix_runs/host-docker-internal-5173_9145/routing-verification.json` and `strix.log` (ignored artifacts).
+
+### Three-run bounded QUICK comparison
+
+The three completed runs used the same authorized, isolated read-only snapshot of target commit `6c0fc01e7f969bbf75ef663606aa4a4d7c747620`; URL `http://host.docker.internal:5173`; one identical read-only prompt; `-n --scan-mode quick --max-budget 5 --max-turns 500`; reasoning effort `high`; same skills/tool declarations and scope. Configured model map was Worker `openai/deepseek/deepseek-v4.1-flash`, Specialist `openai/xiaomi/mimo-v2.6-pro`, Expert `openai/gpt-6.1-sol`; thresholds 0.65/0.65 and share caps 0.25/0.05. The exact common prompt is in each run’s `coverage.json` scope metadata. Credential values and request bodies are not saved.
+
+| Run | Status / agent states | Tasks/branches complete | Reports and coverage | Confirmed findings / missing / false positives / PoC | Elapsed | Input (cached) / output / total tokens | Estimator (USD) | Routing evidence |
+|---|---|---|---|---|---:|---:|---:|---|
+| routing OFF `host-docker-internal-5173_7e8f` | completed, coverage complete; 7/7 agents completed | Agent completion proxy 7/7; separate branch list not emitted | 3 reports; 22 surfaces, 1 gap; outcomes reported 6 / no issue 6 / ruled out 9 / follow-up 1 | Unassessable against expected truth set; reports are not independently confirmed | 4415.989s | 30,641,135 (29,647,872 cached) / 315,680 / 30,956,815 | 0.765738516 | Routing disabled; no child route records expected |
+| routing ON, JEV OFF `host-docker-internal-5173_3a13` | completed, coverage complete; 5/5 agents completed | Agent completion proxy 5/5; separate branch list not emitted | 9 reports; 25 surfaces, 3 gaps; outcomes reported 11 / no issue 1 / ruled out 10 / not applicable 1 / follow-up 2 | Unassessable against expected truth set; reports are not independently confirmed | 3135.060s | 14,112,176 (13,345,792 cached) / 286,997 / 14,399,173 | 0.6092325702 | 4 decisions/bindings: 2 Worker/DeepSeek + 2 Specialist/MiMo; all `reason=rule`; no JEV |
+| routing ON, JEV ON `host-docker-internal-5173_3d42` | completed; 9 completed, 1 failed, 1 stopped agent; `coverage.complete=false` due failed Recon & Surface Mapper | Agent completion proxy 9/11; separate branch list not emitted | 4 reports; 47 surfaces, 9 gaps; outcomes reported 8 / no issue 12 / ruled out 20 / follow-up 7 | Unassessable against expected truth set; reports are not independently confirmed | 6828.043s | 32,150,540 (30,721,408 cached) / 455,092 / 32,605,632 | 1.0508849544 | 10 decisions/bindings: Worker 4 / Specialist 6 / Expert 0; 7 actual JEV answers and 7 `reason=jev` rows, 3 `reason=rule`; all logged tiers map to configured models |
+
+All CLI scan exits were **2** (findings/reports filed); persisted statuses were `completed`. These are not clean-scan claims. A first JEV-on attempt `host-docker-internal-5173_52d6` is retained separately: exit **1**, status failed after 1143.469s, 1 completed/1 failed/1 crashed/2 running agents, 6 surfaces, 8 gaps, no report, 2 JEV answers (worker 407/41 and specialist 411/42), estimator USD 0.2515746588. It is a failed partial attempt, not one of the three completed runs.
+
+No owner-supplied ground-truth/expected-finding/PoC set exists, so the confirmed-vulnerability count against truth, missing findings, false positives, and reproducible PoC parity are **unassessable** in every row. The coverage/outcome counts above are what the scan recorded, not independent validation. For JEV-on `3d42`, Worker→Specialist escalation was observed; no Expert route occurred because none of the seven JEV answers chose `expert`. Probability values are not logged, so the absent Expert route is not attributed to a specific threshold or cap. The separate GPT live contract returned HTTP 403 `MODEL_NOT_IN_PLAN`. Provider billing dashboard/statement was not available, so actual billed charges are **unread**; the dollar amounts are reviewed-rate estimates only. Total estimated scan spend across the three completed runs plus the failed JEV attempt is USD **2.6774306994**; this is not an invoice amount.
+
+Reproduction command shape (for each setting, source only the protected mode-0600 env file; do not enable shell tracing):
+
+```bash
+set +x
+set -a; . /home/hieuit095/.strix-live.env; set +a
+trap 'unset LLM_API_KEY CMD_API_KEY COMMAND_CODE_API_BASE LLM_API_BASE STRIX_LLM STRIX_API_TYPE STRIX_REASONING_EFFORT LLM_TIMEOUT STRIX_ROUTING_LIVE_TESTS STRIX_ROUTING_ENABLED STRIX_ROUTING_SPECIALIST_MODEL STRIX_ROUTING_EXPERT_MODEL STRIX_ROUTING_JEV_ENABLED STRIX_ROUTING_JEV_POLICY_VERIFIED STRIX_ROUTING_SPECIALIST_THRESHOLD STRIX_ROUTING_EXPERT_THRESHOLD STRIX_ROUTING_SPECIALIST_CAP STRIX_ROUTING_EXPERT_CAP' EXIT
+export LLM_API_KEY="$CMD_API_KEY" LLM_API_BASE="$COMMAND_CODE_API_BASE" STRIX_LLM='openai/deepseek/deepseek-v4.1-flash' STRIX_REASONING_EFFORT=high
+# Set STRIX_ROUTING_ENABLED and STRIX_ROUTING_JEV_ENABLED for the row being reproduced;
+# on-runs also set specialist/expert IDs, thresholds/caps as listed above.
+UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 10800s \
+  uv run --project /home/hieuit095/strix --offline python /tmp/strix-hybrid-rate-runner.py \
+  --run-scan -n -t http://host.docker.internal:5173 --scan-mode quick \
+  --max-budget 5 --max-turns 500 \
+  --instruction 'Perform a read-only quick security scan of the authorized local application. Prioritize authorization boundaries, IDOR, broken function-level authorization, and business-logic flows where relevant. Use Strix's normal child-agent workflow when a separate validation task is warranted; do not force a tier/model or invent a finding. Do not modify files, use destructive actions, or test external services.'
+```
+
+### Real resumed child-session evidence
+
+The resumed run is `host-docker-internal-5173_5f2f`. Its original pre-resume snapshot SHA256 is `37a6342d53df45d0eae1e0a2faee85bcf5bfc8edd25dfa72ebd241ba5a05406d`; it had two agents (root `82b700ac`, existing child `25d10df1`) and routing counter Worker=1/Specialist=0/Expert=0. The existing child binding was Worker → `openai/deepseek/deepseek-v4.1-flash`, gateway `https://api.commandcode.ai/provider/v1`, `chat_completions`. Resume log at 2026-10-07 02:42:18.684 ICT says the coordinator restored two agents with root `82b700ac`. The old child completed with its original model; it has no post-resume route event and no JEV call.
+
+New work after resume generated one Worker and three Specialist admissions. Three real JEV answers for new children are logged: specialist 416/42, worker 407/41, worker 407/41; their final bound tier/model rows are recorded in the extract. Snapshot counts advanced from Worker=1/Specialist=0 to Worker=2/Specialist=3/Expert=0, rather than resetting. The five saved child bindings comprise the original Worker/DeepSeek child, one new Worker/DeepSeek child, and three new Specialist/MiMo children. The old child completed on its saved model and received no post-resume route decision or JEV call. The actual resume command exited **2** (Strix report/findings); persisted `run.json.status=completed`, `coverage.complete=true`, 32 surfaces, 5 gaps, 1 report; all six agent statuses completed. Usage was 147 requests, 16,630,597 input (15,734,912 cached), 223,467 output, 16,854,064 total tokens, USD 0.5581810692 estimated (not actual charge). Secret-free before/after extraction: `strix_runs/host-docker-internal-5173_5f2f/resume-routing-evidence.json`; source snapshot/log: `.state/agents.json` and `strix.log`. This establishes exact restore/no-old-child-reroute/counter continuity; newly spawned children are separately routed after resume.
+
+Exact resume command (exit **2**): `set +x; set -a; . /home/hieuit095/.strix-live.env; set +a; export STRIX_ROUTING_ENABLED=true STRIX_ROUTING_JEV_ENABLED=true STRIX_ROUTING_JEV_POLICY_VERIFIED=1 STRIX_ROUTING_SPECIALIST_MODEL='openai/xiaomi/mimo-v2.6-pro' STRIX_ROUTING_EXPERT_MODEL='openai/gpt-6.1-sol' STRIX_ROUTING_SPECIALIST_THRESHOLD=0.65 STRIX_ROUTING_EXPERT_THRESHOLD=0.65 STRIX_ROUTING_SPECIALIST_CAP=0.25 STRIX_ROUTING_EXPERT_CAP=0.05; UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 10800s uv run --project /home/hieuit095/strix --offline python /tmp/strix-hybrid-rate-runner.py --run-scan -n --resume host-docker-internal-5173_5f2f --scan-mode quick --max-budget 5 --max-turns 500`.
+
+Across all nine persisted `strix_runs/*/run.json` records after the resume completed, observed estimator usage totals USD **5.6709503622** across 1,800 requests (includes failed/partial runs). This is below the owner’s USD 100 total estimate cap; it is not actual billing and excludes any unpersisted direct probe usage. The CommandCode billed amount remains unread.
+
+### Explicit remaining gates and release decision
+
+- **BLOCKED by external gate — Expert/GPT live:** four prior GPT-6.1 contract cases returned HTTP 403 `MODEL_NOT_IN_PLAN`; the completed JEV scan had no Expert choice (all seven choices were Worker or Specialist). Offline tier/model mapping passes. Exact attempt: `STRIX_ROUTING_LIVE_TESTS=1 UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 180s uv run --offline pytest tests/test_routing_live.py -k 'live_text_contract or live_full_tool_contract' -q` → exit **1**, **8 passed/4 GPT cases failed** with HTTP 403 `MODEL_NOT_IN_PLAN`; no repeat/purchase. All seven JEV choices in the current full scan were Worker/Specialist, so no Expert route was selected. Offline model mapping passes. Minimal prerequisite: owner enables GPT-6.1 entitlement or supplies an entitled model and authorizes a bounded live Expert test.
+- **BLOCKED by external gate — quality/PoC parity:** need owner-supplied expected findings/roles/reproduction and PoC truth set for the authorized target; no inference can manufacture independent ground truth.
+- **BLOCKED by external gate — actual charge:** need read-only CommandCode billing statement/dashboard access; rate-based USD estimates do not prove the charge.
+- **BLOCKED/deferred — candidate release:** no merge/deploy authorization, and the external gates above remain open. Rollback is available by disabling routing for new scans; existing scans require their saved model bindings and same gateway.
+
+Plan §7 is reconciled in `strix_hybrid_router_plan.md`: implementation, offline/regression, JEV privacy/schema, live JEV and resume behavior are evidenced; coverage/PoC quality remains `blocked by external gate`. No release, merge, deploy, PR, issue, or upstream interaction was performed.
+
+Target boundary/cleanup after all live runs: `/home/hieuit095/h-th-ng-qu-n-l-btxh-nct` remained at HEAD `6c0fc01e7f969bbf75ef663606aa4a4d7c747620`, `## main...origin/main`, with only its pre-existing `?? scripts/optimize_system.sh`. All scans used the isolated `/tmp/strix-live-target-6c0fc01` snapshot and HTTP URL; no target source files were modified. After resume completion, `supabase stop --workdir /tmp/strix-live-target-6c0fc01 --no-backup` exited **0**, the Vite processes for that snapshot were stopped, and a final `curl --connect-timeout 2 ... http://127.0.0.1:5173/` returned HTTP **000** / curl exit **7** as expected after shutdown.
