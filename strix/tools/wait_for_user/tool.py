@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from agents import RunContextWrapper, function_tool
 
@@ -11,7 +11,8 @@ from strix.core.agents import coordinator_from_context
 
 
 def _ctx(ctx: RunContextWrapper) -> dict[str, Any]:
-    return ctx.context if isinstance(ctx.context, dict) else {}
+    context: Any = ctx.context
+    return cast("dict[str, Any]", context) if isinstance(context, dict) else {}
 
 
 @function_tool
@@ -65,8 +66,7 @@ async def wait_for_user(ctx: RunContextWrapper) -> str:
             default=str,
         )
 
-    async with coordinator._lock:
-        stopped = coordinator.statuses.get(me) == "stopped"
+    stopped = await coordinator.get_status(me) == "stopped"
     if stopped:
         return json.dumps(
             {"success": True, "wait_outcome": "stopped"},
