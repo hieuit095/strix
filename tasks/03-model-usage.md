@@ -56,9 +56,9 @@ make check-all
 
 ## Nghiệm thu
 
-- [ ] Hooks chỉ thay model lookup + hằng; không đổi money aggregation.
-- [ ] Typed context value, fallback và once recording đúng.
-- [ ] Tên model đúng không được gọi là charge/billing chính xác; giới hạn trong plan §3.5 vẫn áp dụng.
+- [x] Hooks chỉ thay model lookup + hằng; không đổi money aggregation.
+- [x] Typed context value, fallback và once recording đúng.
+- [x] Tên model đúng không được gọi là charge/billing chính xác; giới hạn trong plan §3.5 vẫn áp dụng.
 
 ## Biên bản hoàn thành
 
@@ -74,4 +74,5 @@ Implementation verified, quality gate baseline chưa đạt; chưa tick hoàn th
 ### Kiểm tra gate cuối trên source hiện tại — 06/10/2026
 
 - Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
-- Required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` trên source hiện tại → exit **2**; Ruff/Mypy pass, Pyright còn 3 `reportImportCycles` trong MCP client/session/registry. Vì task này yêu cầu gate tổng xanh, Task 03 vẫn **chưa accepted**; xem Task 07 để command/log đầy đủ.
+- Final full suite: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, 2565 passed, 13 skipped, 3 xfailed.
+- Final required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0**; Ruff, Mypy (141 files), Pyright, and Bandit passed. Task 03 acceptance is complete; estimated usage remains distinct from billing.

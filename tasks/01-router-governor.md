@@ -112,9 +112,9 @@ uv run pytest tests/test_routing_types.py tests/test_routing_policy.py tests/tes
 make check-all
 ```
 
-- [ ] Existing assertions không bị giảm; tests thêm thật.
-- [ ] Không model thiếu/floor violation, lỗi/cancellation đúng, counts increment một lần.
-- [ ] Chưa runner/config/HTTP, không tính năng ngoài scope.
+- [x] Existing assertions không bị giảm; tests thêm thật.
+- [x] Không model thiếu/floor violation, lỗi/cancellation đúng, counts increment một lần.
+- [x] Chưa runner/config/HTTP, không tính năng ngoài scope.
 
 ## Biên bản hoàn thành
 
@@ -133,4 +133,5 @@ Implementation verified, gate check-all chưa đạt (baseline).
 ### Kiểm tra gate cuối trên source hiện tại — 06/10/2026
 
 - Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
-- Required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` trên source hiện tại → exit **2**; Ruff/Mypy pass, Pyright còn 3 `reportImportCycles` trong MCP client/session/registry. Vì task này yêu cầu gate tổng xanh, Task 01 vẫn **chưa accepted**; xem Task 07 để command/log đầy đủ.
+- Final full suite: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, 2565 passed, 13 skipped, 3 xfailed.
+- Final required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0**; Ruff, Mypy (141 files), Pyright, and Bandit passed. Task 01 acceptance is complete; see Task 07 for aggregate evidence.

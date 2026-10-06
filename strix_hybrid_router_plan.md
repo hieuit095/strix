@@ -374,14 +374,16 @@ Không đổi các lựa chọn LLM reasoning/tool/prompt cache hiện tại ch�
 
 ## 7. Definition of Done và giới hạn còn lại
 
-- [ ] Chỉ hai module production mới; không framework/provider/ledger/telemetry/checkpoint riêng.
-- [ ] Routing off giữ hành vi cũ; root model, tools, prompts, skills, spawn/context, scan modes và budget lifecycle không bị giảm.
-- [ ] High-impact không bị governor hạ dưới floor; không chọn tier thiếu; JEV lỗi fallback rõ.
-- [ ] Child chọn model một lần, usage ghi đúng model, resume đúng binding/counters.
+- [x] Chỉ hai module production mới; không framework/provider/ledger/telemetry/checkpoint riêng.
+- [x] Routing off giữ hành vi cũ; root model, tools, prompts, skills, spawn/context, scan modes và budget lifecycle không bị giảm.
+- [x] High-impact không bị governor hạ dưới floor; không chọn tier thiếu; JEV lỗi fallback rõ.
+- [x] Child chọn model một lần, usage ghi đúng model, resume đúng binding/counters.
 - [ ] JEV dùng API/schema đã xác minh, metadata allowlist, không bypass ZDR hoặc nuốt cancellation.
-- [ ] Regression offline + check-all xanh; live contract được ghi trạng thái thật.
+- [x] Regression offline + check-all xanh; live contract được ghi trạng thái thật.
 - [ ] Coverage/PoC được so với baseline; không tuyên bố giữ chất lượng chỉ nhờ test mock.
 
 **Chưa xác minh:** quyền/credits của account; policy cho metadata JEV không ZDR; live tool/reasoning contract; giá estimator khớp CommandCode. Các điểm này chặn live rollout tương ứng, không chặn tích hợp offline. Không còn thiếu endpoint/schema JEV.
 
 **Ước lượng:** 4–6 ngày công, tùy baseline và resume tests; chưa gồm thời gian scan xác minh chất lượng. Thứ tự Task 0→1→2→3→4→5→6. Không triển khai checkpoint/Advisor/ledger như “phase sau” mặc định; chỉ xem xét nếu người dùng yêu cầu một mục tiêu mới và có bằng chứng cần thiết.
+
+**Trạng thái nghiệm thu 06/10/2026:** Tasks 00–07 offline đã đạt; full suite có 2565 passed, 13 skipped (opt-in live), 3 xfailed, và `make check-all` xanh. Một QUICK scan được thử thật trên target do owner cấp phép với `--max-budget 5`; local app trả HTTP 200 nhưng provider inference preflight trả HTTP 401, vì vậy scan không tạo `run.json` và findings không đo được. Gate live JEV vẫn mở (JEV vắng khỏi catalog và non-ZDR policy chưa được xác nhận); actual billing, ground-truth quality/PoC comparison, và routed resume cũng chưa được kiểm chứng. Không tuyên bố toàn plan hoàn thành.

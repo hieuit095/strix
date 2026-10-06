@@ -109,10 +109,10 @@ uv run pytest tests/test_routing_spawn.py tests/test_agent_graph_coordination.py
 make check-all
 ```
 
-- [ ] Root/settings/tools/prompts/history/agent creation không bị giảm.
-- [ ] Disabled identity/no I/O; enabled routes đúng; usage/context đúng.
-- [ ] Guards trước và sau JEV, exception không bị generic catch nuốt.
-- [ ] Client closed mọi exit; chưa tuyên bố resume đúng khi 06 chưa xong.
+- [x] Root/settings/tools/prompts/history/agent creation không bị giảm.
+- [x] Disabled identity/no I/O; enabled routes đúng; usage/context đúng.
+- [x] Guards trước và sau JEV, exception không bị generic catch nuốt.
+- [x] Client closed mọi exit; resume verification is owned by Task 06.
 
 ## Biên bản hoàn thành
 
@@ -125,4 +125,5 @@ Nghiệm thu: `uv run pytest tests/test_routing_spawn.py tests/test_agent_graph_
 ### Kiểm tra gate cuối trên source hiện tại — 06/10/2026
 
 - Full suite source hiện tại được chạy ở Task 07: exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings**.
-- Required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` trên source hiện tại → exit **2**; Ruff/Mypy pass, Pyright còn 3 `reportImportCycles` trong MCP client/session/registry. Vì task này yêu cầu gate tổng xanh, Task 05 vẫn **chưa accepted**; xem Task 07 để command/log đầy đủ.
+- Final full suite: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, 2565 passed, 13 skipped, 3 xfailed.
+- Final required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0**; Ruff, Mypy (141 files), Pyright, and Bandit passed. Task 05 acceptance is complete; resume behavior is verified by Task 06.

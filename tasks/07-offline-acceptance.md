@@ -47,10 +47,10 @@ Ghi exit codes/số tests thật. `git diff` không hiển thị untracked: mở
 
 ## Nghiệm thu
 
-- [ ] Full offline/check-all pass ở diff cuối cùng; chỉ broaden/repeat nếu có sửa mới hoặc failure.
+- [x] Full offline/check-all pass ở diff cuối cùng; chỉ broaden/repeat nếu có sửa mới hoặc failure.
 - [x] README đủ dùng và khớp actual aliases/signatures, không quảng cáo billing/quality chưa đo.
 - [x] Preserve-functionality assertions và no-scope-creep diff hoàn tất.
-- [ ] Đánh dấu bàn giao là **offline verified, live chưa verified** cho đến 08.
+- [x] Đánh dấu bàn giao là **offline verified, live chưa verified** cho đến 08.
 
 ## Biên bản hoàn thành
 
@@ -197,3 +197,10 @@ Environment diagnostic riêng: config Pyright tạm dưới /tmp giữ nguyên s
 - MCP JSON/context types and the SDK async-generator annotation were corrected at the existing boundaries; `errored_tool_output` and `build_server` provide typed cross-module entry points while the existing `_build_server` seam remains for tests. The first test selection included nonexistent `tests/test_mcp_agent_tools.py` and exited **4** before collection; corrected `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_mcp_client.py tests/test_mcp_resilience.py -q` → exit **0**, **107 passed**. MCP file-scoped Mypy/Ruff pass; Pyright still reports **3** import-cycle diagnostics spanning client/session/registry.
 - `strix.interface.viewer.serve` now lazily resolves the same server function through `importlib`, preserving the public call signature and return value while breaking the package/server import cycle. The package delegation regression first failed (exit **1**) against the eager export as expected; final `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_viewer.py tests/test_viewer_auth.py tests/test_viewer_runs_gating.py -q` → exit **0**, **45 passed**. Viewer file-scoped Pyright, Mypy, Ruff check/format pass.
 - Required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **2**: Ruff format/check pass; Mypy passes all **141** source files; Pyright still fails only on the **3** MCP import-cycle diagnostics above. Final full suite `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings** in 382.22s. Task 07 remains **unaccepted** while `make check-all` is red.
+
+### Final offline acceptance — 06/10/2026
+
+- Refactored the existing MCP client/session dependency direction and moved the shared error serializer into the existing `strix/tools/mcp/failures.py`; no production module or dependency was added. The existing behavior tests passed both before and after: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_mcp_client.py tests/test_mcp_resilience.py -q` → exit **0**, **107 passed** each run.
+- Required `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **0**: Ruff format/check passed; Mypy passed 141 source files; Pyright reported 0 errors/warnings; Bandit reported no issues.
+- Final full suite `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 500s uv run --offline pytest -q -o faulthandler_timeout=30` → exit **0**, **2565 passed, 13 skipped, 3 xfailed, 106 warnings** in 384.76s. Live opt-in skips are not live proof.
+- Task 07 is **offline accepted**. The owner-authorized live scan and Task 08 gates are recorded separately; no live or overall-plan completion is implied.
