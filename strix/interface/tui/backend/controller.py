@@ -8,7 +8,7 @@ import math
 import webbrowser
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from strix.config import load_settings
 from strix.config.settings import DEFAULT_MAX_TURNS
@@ -64,10 +64,9 @@ class TuiController:
         self.scan_started = not self.setup_mode
         self._start_in_progress = False
         self.scan_state = "setup" if self.setup_mode else "running"
+        target_entries = cast("list[dict[str, Any]]", args.targets_info)
         self.targets = [
-            str(target["original"])
-            for target in args.targets_info
-            if isinstance(target, dict) and target.get("original")
+            str(target["original"]) for target in target_entries if target.get("original")
         ]
         instruction = args.instruction
         self.instruction = instruction.strip() if isinstance(instruction, str) else ""
@@ -148,7 +147,7 @@ class TuiController:
                 "dead": bool(entry.get("dead", False)),
             }
             for entry in roster
-            if isinstance(entry, dict) and entry.get("name")
+            if entry.get("name")
         ]
         self.notify_changed()
 
