@@ -12,10 +12,45 @@ from agents.models.interface import ModelTracing
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from openai import AsyncOpenAI
 
+from strix.agents.factory import make_child_factory
 from strix.config.models import StrixProvider
 from strix.config.settings import LlmSettings, RoutingSettings, Settings
 from strix.routing.runconfig import configured_models, run_config_for_model, validate_routing_config
 from strix.routing.types import Tier
+
+
+@pytest.mark.parametrize("scan_mode", ["quick", "standard", "deep"])
+@pytest.mark.parametrize("interactive", [False, True])
+def test_real_agents_keep_prompts_tools_and_capabilities(scan_mode: str, interactive: bool) -> None:
+    settings = commandcode_settings()
+    base = RunConfig(model=settings.llm.model)
+    child = run_config_for_model(base, settings.routing.specialist_model, settings)
+    assert child.model != base.model
+    options = {
+        "scan_mode": scan_mode,
+        "interactive": interactive,
+        "is_whitebox": True,
+        "is_diff_scoped": True,
+        "chat_completions_tools": True,
+        "strict_tool_schemas": False,
+        "system_prompt_context": {"scope": "synthetic"},
+    }
+    before = make_child_factory(**options)(name="probe", skills=["rce"])
+    after = make_child_factory(**options)(name="probe", skills=["rce"])
+    assert before.instructions == after.instructions
+    assert before.instructions
+    assert [tool.name for tool in before.tools] == [tool.name for tool in after.tools]
+    assert len(before.tools) > 10
+    for old, new in zip(before.tools, after.tools, strict=True):
+        assert getattr(old, "params_json_schema", None) == getattr(new, "params_json_schema", None)
+        assert getattr(old, "strict_json_schema", None) == getattr(new, "strict_json_schema", None)
+    assert (
+        [cap.type for cap in before.capabilities]
+        == [cap.type for cap in after.capabilities]
+        == ["filesystem", "shell"]
+    )
+    for old, new in zip(before.capabilities, after.capabilities, strict=True):
+        assert old.configure_tools is not None and new.configure_tools is not None
 
 
 def test_worker_preserves_runconfig_identity() -> None:

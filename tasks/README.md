@@ -45,3 +45,15 @@ Task 03 có thể độc lập sau 00 nhưng danh sách mặc định vẫn làm
 Mỗi task cập nhật mục “Biên bản hoàn thành” ở cuối file của chính nó. Chỉ thêm log ngắn đã lọc secret hoặc đường dẫn log cục bộ; không dựng artifact system. Đừng tạo file bằng chứng trước khi thật sự có kết quả.
 
 Báo cáo cuối phải phân biệt: `offline verified`, `live verified`, `blocked by external gate`. Các từ này là trạng thái ghi nhận, không phải cơ chế chạy nền. Hoàn thành tất cả 00–08 và checklist plan §7 thì mới tuyên bố nâng cấp đã hoàn thành.
+
+
+## Trạng thái thực thi ngày 06/10/2026
+
+| Task | Trạng thái hiện tại | Evidence |
+|---|---|---|
+| 00 | Hoàn tất baseline | 2355 passed/3 existing xfailed; quality baseline 910 Pyright errors |
+| 01–06 | Implementation và required targeted regressions đã ghi; acceptance quality chưa đạt | Biên bản từng task; commits qua `605e11c` |
+| 07 | Offline regression/full suite pass; acceptance chưa đạt vì required check-all baseline đỏ | Final 2564 passed/13 live skipped/3 xfailed; targeted 162 passed/13 skipped; Pyright remains 910 errors/59 baseline files |
+| 08 | Offline harness pass; limited synthetic live contracts pass; rollout incomplete | 20 passed/13 skipped offline; live 8 passed/4 failed (GPT plan access); current catalog lacks JEV; no authorized scan fixture/policy |
+
+Không tuyên bố toàn plan complete. Branch vẫn `feat/hybrid-router`; parser fix đã commit thành `605e11c`, các nhóm Task 07/08 chờ commit sau final verification. Không push. Task 07 check-all còn đỏ ở inherited Pyright baseline; live rollout cần GPT entitlement/credits, catalog có JEV, owner-provided authorized ground-truth fixture và JEV non-ZDR policy. Đây là các gate riêng; xem commands/exit codes và scope ở biên bản 07/08.

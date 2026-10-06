@@ -37,6 +37,8 @@ async def run_spawn(
     outcome: str = "success",
     expected_error: type[Exception] | None = None,
     parent_model: str | None = None,
+    scan_mode: str = "quick",
+    interactive: bool = False,
 ) -> dict[str, Any]:
     captured = _patch_engine_scaffold(monkeypatch, tmp_path, {"scope": "synthetic"})
     settings = commandcode_settings(jev_enabled=jev)
@@ -46,6 +48,12 @@ async def run_spawn(
     monkeypatch.setattr(runner, "get_global_report_state", lambda: report_state)
     captured["settings"] = settings
     captured["children"] = []
+
+    def child_factory(**kwargs: Any) -> Any:
+        captured["factory"] = kwargs
+        return lambda **_kw: object()
+
+    monkeypatch.setattr(runner, "make_child_factory", child_factory)
 
     async def start(**kwargs: Any) -> dict[str, Any]:
         captured["children"].append(kwargs)
@@ -78,7 +86,7 @@ async def run_spawn(
     monkeypatch.setattr(runner, "start_child_agent", start)
     monkeypatch.setattr(runner, "run_agent_loop", loop)
     await runner.run_strix_scan(
-        scan_config={"targets": [], "scan_mode": "quick"},
+        scan_config={"targets": [], "scan_mode": scan_mode},
         scan_id="routing-test",
         image="img",
         coordinator=coordinator,
@@ -86,6 +94,7 @@ async def run_spawn(
         max_turns=37,
         max_budget_usd=max_budget,
         budget_policy=budget_policy,
+        interactive=interactive,
     )
     return captured
 
@@ -461,3 +470,44 @@ async def test_reserve_rechecked_after_jev(monkeypatch: pytest.MonkeyPatch, tmp_
         expected_error=SubagentBudgetReservedError,
     )
     assert len(requests) == 1 and not result["children"]
+
+
+@pytest.mark.parametrize("scan_mode", ["quick", "standard", "deep"])
+@pytest.mark.parametrize("interactive", [False, True])
+async def test_routing_preserves_scan_and_factory_options(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scan_mode: str,
+    interactive: bool,
+) -> None:
+    off = await run_spawn(
+        monkeypatch, tmp_path / "off", enabled=False, scan_mode=scan_mode, interactive=interactive
+    )
+    on = await run_spawn(
+        monkeypatch, tmp_path / "on", enabled=True, scan_mode=scan_mode, interactive=interactive
+    )
+    assert off["factory"] == on["factory"]
+    assert off["kwargs"] == on["kwargs"]
+    assert on["factory"]["scan_mode"] == scan_mode
+    assert on["factory"]["interactive"] is interactive
+    for field in ("task", "skills", "parent_history", "max_turns", "interactive"):
+        assert off["children"][0][field] == on["children"][0][field]
+
+
+async def test_jev_failure_preserves_task_and_history_at_floor(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def client() -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda _req: httpx.Response(503, text="SECRET_PROVIDER_BODY")
+            )
+        )
+
+    monkeypatch.setattr(runner, "httpx", SimpleNamespace(AsyncClient=client))
+    result = await run_spawn(monkeypatch, tmp_path, enabled=True, jev=True)
+    child = result["children"][0]
+    assert child["routing"]["tier"] == "specialist"
+    assert child["task"] == "synthetic" and child["skills"] == ["rce"]
+    assert child["parent_history"] == [{"role": "user", "content": "background"}]
