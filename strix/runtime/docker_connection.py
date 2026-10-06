@@ -56,7 +56,7 @@ def resolve_docker_endpoint(environ: dict[str, str] | None = None) -> DockerEndp
 
     source = f"docker context '{name}'"
     try:
-        context = ContextAPI.get_context(name)
+        context: Any = ContextAPI.get_context(name)
     except DockerException as exc:
         raise DockerConnectionError(DockerEndpoint(None, source), exc) from exc
     if context is None:

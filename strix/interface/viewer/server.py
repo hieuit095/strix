@@ -23,7 +23,7 @@ import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
 from strix.core.paths import run_record_path
@@ -201,7 +201,7 @@ def _make_handler(state: _ViewerState) -> type[BaseHTTPRequestHandler]:
                 body = json.loads(raw or b"{}")
             except json.JSONDecodeError:
                 return {}
-            return body if isinstance(body, dict) else {}
+            return cast("dict[str, Any]", body) if isinstance(body, dict) else {}
 
         # Funnel events the viewer is allowed to forward. This handler is the
         # trust boundary: only these event names, with only their known props,
