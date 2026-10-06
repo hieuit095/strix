@@ -17,7 +17,7 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -52,6 +52,7 @@ def read_auth() -> dict[str, Any] | None:
         return None
     if not isinstance(data, dict):
         return None
+    data = cast("dict[str, Any]", data)
     email = data.get("email")
     token = data.get("token")
     if not isinstance(email, str) or not email or not isinstance(token, str) or not token:
@@ -159,7 +160,7 @@ def _parse_body(raw: bytes) -> dict[str, Any]:
         data = json.loads(raw or b"{}")
     except json.JSONDecodeError:
         return {}
-    return data if isinstance(data, dict) else {}
+    return cast("dict[str, Any]", data) if isinstance(data, dict) else {}
 
 
 def otp_start(email: str) -> None:
