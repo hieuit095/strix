@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from functools import cache
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from agents.model_settings import ModelSettings
 from agents.models.interface import ModelTracing
@@ -148,9 +148,10 @@ def _content_text(content: Any) -> str:
         return content
     if isinstance(content, list):
         parts: list[str] = []
-        for block in content:
+        for block in cast("list[object]", content):
             if not isinstance(block, dict):
                 continue
+            block = cast("dict[str, Any]", block)
             text = block.get("text")
             if isinstance(text, str):
                 parts.append(text)
@@ -167,6 +168,7 @@ def _truncate(text: str, limit: int) -> str:
 def _serialize_item(item: Any) -> str:
     if not isinstance(item, dict):
         return str(item)
+    item = cast("dict[str, Any]", item)
     item_type = item.get("type")
     role = item.get("role")
     if item_type == "function_call":
@@ -188,11 +190,14 @@ def _serialize_items(items: list[Any]) -> str:
 
 
 def _is_tool_call(item: Any) -> bool:
-    return isinstance(item, dict) and item.get("type") == "function_call"
+    return isinstance(item, dict) and cast("dict[str, Any]", item).get("type") == "function_call"
 
 
 def _is_tool_output(item: Any) -> bool:
-    return isinstance(item, dict) and item.get("type") == "function_call_output"
+    return (
+        isinstance(item, dict)
+        and cast("dict[str, Any]", item).get("type") == "function_call_output"
+    )
 
 
 def _open_calls_at(items: list[Any]) -> list[int]:
@@ -223,8 +228,8 @@ def _select_split(model: str, items: list[Any], keep_tokens: int) -> int:
 
 def _previous_summary(head: list[Any]) -> str | None:
     for item in head:
-        if isinstance(item, dict) and item.get("role") == "user":
-            text = _content_text(item.get("content"))
+        if isinstance(item, dict) and cast("dict[str, Any]", item).get("role") == "user":
+            text = _content_text(cast("dict[str, Any]", item).get("content"))
             if text.startswith(_CHECKPOINT_TAG):
                 return text
     return None
