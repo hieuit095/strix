@@ -9,7 +9,7 @@ import threading
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from agents import RunContextWrapper, function_tool
 
@@ -56,14 +56,13 @@ def hydrate_todos_from_disk(state_dir: Path) -> None:
         if not isinstance(data, dict):
             return
         loaded = 0
-        for aid, by_id in data.items():
+        for aid, by_id in cast("dict[object, object]", data).items():
             if not isinstance(aid, str) or not isinstance(by_id, dict):
                 continue
-            cleaned = {
-                str(tid): t
-                for tid, t in by_id.items()
-                if isinstance(tid, str) and isinstance(t, dict)
-            }
+            cleaned: dict[str, dict[str, Any]] = {}
+            for tid, todo in cast("dict[object, object]", by_id).items():
+                if isinstance(tid, str) and isinstance(todo, dict):
+                    cleaned[tid] = cast("dict[str, Any]", todo)
             if cleaned:
                 _todos_storage[aid] = cleaned
                 loaded += len(cleaned)
@@ -101,7 +100,8 @@ def _persist() -> None:
 
 
 def _agent_id_from(ctx: RunContextWrapper) -> str:
-    inner = ctx.context if isinstance(ctx.context, dict) else {}
+    context: Any = ctx.context
+    inner = cast("dict[str, Any]", context) if isinstance(context, dict) else {}
     return str(inner.get("agent_id") or "default")
 
 
@@ -143,10 +143,10 @@ def _normalize_todo_ids(raw_ids: Any) -> list[str]:
         except json.JSONDecodeError:
             data = stripped.split(",") if "," in stripped else [stripped]
         if isinstance(data, list):
-            return [str(item).strip() for item in data if str(item).strip()]
+            return [str(item).strip() for item in cast("list[object]", data) if str(item).strip()]
         return [str(data).strip()]
     if isinstance(raw_ids, list):
-        return [str(item).strip() for item in raw_ids if str(item).strip()]
+        return [str(item).strip() for item in cast("list[object]", raw_ids) if str(item).strip()]
     return [str(raw_ids).strip()]
 
 
@@ -169,9 +169,10 @@ def _normalize_bulk_updates(raw_updates: Any) -> list[dict[str, Any]]:
         raise TypeError("Updates must be a list of update objects")
 
     normalized: list[dict[str, Any]] = []
-    for item in data:
+    for item in cast("list[object]", data):
         if not isinstance(item, dict):
             raise TypeError("Each update must be an object with todo_id")
+        item = cast("dict[str, Any]", item)
         todo_id = item.get("todo_id") or item.get("id")
         if not todo_id:
             raise ValueError("Each update must include 'todo_id'")
@@ -207,7 +208,7 @@ def _normalize_bulk_todos(raw_todos: Any) -> list[dict[str, Any]]:
         raise TypeError("Todos must be provided as a list, dict, or JSON string")
 
     normalized: list[dict[str, Any]] = []
-    for item in data:
+    for item in cast("list[object]", data):
         if isinstance(item, str):
             title = item.strip()
             if title:
@@ -215,13 +216,14 @@ def _normalize_bulk_todos(raw_todos: Any) -> list[dict[str, Any]]:
             continue
         if not isinstance(item, dict):
             raise TypeError("Each todo entry must be a string or object with a title")
+        item = cast("dict[str, Any]", item)
         title = item.get("title", "")
         if not isinstance(title, str) or not title.strip():
             raise ValueError("Each todo entry must include a non-empty 'title'")
         normalized.append(
             {
                 "title": title.strip(),
-                "description": (item.get("description") or "").strip() or None,
+                "description": cast("str", item.get("description") or "").strip() or None,
                 "priority": item.get("priority"),
             },
         )
