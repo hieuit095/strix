@@ -16,8 +16,8 @@ carries the same registry object).
 
 strix-pro imports :class:`McpRegistry` to add its cloud connections into the
 same registry and to attach a per-connection ``result_transform`` (its
-sanitizer), which :func:`strix.tools.mcp.client.dispatch_mcp_call` applies at the
-single dispatch point.
+sanitizer), which the session's shared dispatch function applies at the single
+dispatch point.
 """
 
 from __future__ import annotations
@@ -36,8 +36,8 @@ if TYPE_CHECKING:
 
     from agents.mcp import MCPServer
 
-    from strix.tools.mcp.client import ResultTransform
     from strix.tools.mcp.config import McpConnectionConfig
+    from strix.tools.mcp.session import ResultTransform
 
 
 # The run-context key under which the runner stores the per-run registry, and

@@ -128,6 +128,13 @@ def classify(exc: BaseException) -> FailureInfo:
     return FailureInfo("unknown", reason="unknown failure")
 
 
+def errored_tool_output(tool_output: object) -> dict[str, object]:
+    """Tag serialized MCP error content so interfaces can render it as failed."""
+    if isinstance(tool_output, dict):
+        return {**tool_output, "success": False}
+    return {"success": False, "content": tool_output}
+
+
 class HttpStatusRecorder:
     """Capture the last non-success response from one HTTP connection."""
 

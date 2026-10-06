@@ -48,24 +48,44 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import json
 import logging
+import os
 import secrets
 import time
 import weakref
-from typing import TYPE_CHECKING, Any, Literal, cast
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
+
+from agents.mcp import (
+    MCPServerStdio,
+    MCPServerStreamableHttp,
+    MCPServerStreamableHttpParams,
+    create_static_tool_filter,
+)
+from mcp.client.stdio import stdio_client
+from mcp.shared._httpx_utils import create_mcp_http_client
 
 from strix.tools.mcp.config import DEFAULT_MAX_CONCURRENT_CALLS
-from strix.tools.mcp.failures import FailureInfo, HttpStatusRecorder, classify
+from strix.tools.mcp.failures import (
+    FailureInfo,
+    HttpStatusRecorder,
+    classify,
+    errored_tool_output,
+)
 
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import AsyncGenerator, Awaitable, Callable
 
-    from agents.mcp import MCPServer
+    import httpx
+    from agents.mcp import MCPServer, MCPServerStdioParams
     from mcp.types import Tool as MCPTool
 
-    from strix.tools.mcp.client import ResultTransform
     from strix.tools.mcp.config import McpConnectionConfig
+
+    ResultTransform = Callable[[str, Any], Any]
 
     # One operation to run against the live session, e.g. ``list_tools`` or a tool
     # call. Runs on the supervising task (supervised sessions) or inline (adopted
@@ -93,6 +113,128 @@ _JITTER = secrets.SystemRandom()
 # ``classify``; ``asyncio.CancelledError`` is always handled separately first,
 # so shutdown and genuine cancellation still propagate.
 _CLASSIFIABLE: tuple[type[BaseException], ...] = (BaseExceptionGroup, Exception)
+
+
+class BuiltMcpServer(NamedTuple):
+    """A constructed SDK server and its optional HTTP failure recorder."""
+
+    server: MCPServer
+    recorder: HttpStatusRecorder | None
+
+
+def build_auth_headers(config: McpConnectionConfig) -> dict[str, str]:
+    """Build the per-server request headers from the connection's auth."""
+    auth = config.auth
+    if auth is None:
+        return {}
+    return {"Authorization": f"Bearer {auth.token}"}
+
+
+@asynccontextmanager
+async def _quiet_stdio_streams(params: Any) -> AsyncGenerator[Any, None]:
+    """Run a stdio MCP server with its stderr sent to the void."""
+    with Path(os.devnull).open("w", encoding="utf-8") as errlog:
+        async with stdio_client(params, errlog=errlog) as streams:
+            yield streams
+
+
+class _QuietMCPServerStdio(MCPServerStdio):
+    """MCP stdio server whose subprocess stderr does not overwrite the TUI."""
+
+    def create_streams(self) -> Any:
+        return _quiet_stdio_streams(self.params)
+
+
+def build_server(config: McpConnectionConfig) -> BuiltMcpServer:
+    """Construct (but do not connect) the SDK server for one connection."""
+    tool_filter = (
+        create_static_tool_filter(allowed_tool_names=config.allowed_tools)
+        if config.allowed_tools is not None
+        else None
+    )
+
+    if config.transport == "stdio":
+        stdio_params: MCPServerStdioParams = {
+            "command": cast("str", config.command),
+            "args": config.args,
+            "env": config.env,
+        }
+        return BuiltMcpServer(
+            _QuietMCPServerStdio(
+                params=stdio_params,
+                name=config.name,
+                tool_filter=tool_filter,
+                cache_tools_list=True,
+            ),
+            None,
+        )
+
+    recorder = HttpStatusRecorder()
+
+    def httpx_client_factory(
+        headers: dict[str, str] | None = None,
+        timeout: httpx.Timeout | None = None,
+        auth: httpx.Auth | None = None,
+    ) -> httpx.AsyncClient:
+        client = create_mcp_http_client(headers=headers, timeout=timeout, auth=auth)
+        client.event_hooks.setdefault("response", []).append(recorder)
+        return client
+
+    http_params: MCPServerStreamableHttpParams = {
+        "url": cast("str", config.url),
+        "headers": build_auth_headers(config),
+        "timeout": config.http_timeout_seconds,
+        "sse_read_timeout": config.sse_read_timeout_seconds,
+        "httpx_client_factory": httpx_client_factory,
+    }
+    return BuiltMcpServer(
+        MCPServerStreamableHttp(
+            params=http_params,
+            name=config.name,
+            tool_filter=tool_filter,
+            cache_tools_list=True,
+            client_session_timeout_seconds=config.session_timeout_seconds,
+        ),
+        recorder,
+    )
+
+
+def _mcp_result_to_tool_output(server: MCPServer, result: Any) -> Any:
+    """Serialize a ``CallToolResult`` the same way the agents SDK does."""
+    if getattr(server, "use_structured_content", False) and result.structuredContent:
+        return json.dumps(result.structuredContent)
+
+    outputs: list[dict[str, Any]] = []
+    for item in result.content:
+        if item.type == "text":
+            outputs.append({"type": "text", "text": item.text})
+        elif item.type == "image":
+            outputs.append(
+                {"type": "image", "image_url": f"data:{item.mimeType};base64,{item.data}"}
+            )
+        else:
+            outputs.append({"type": "text", "text": str(item.model_dump(mode="json"))})
+    if len(outputs) == 1:
+        return outputs[0]
+    return outputs
+
+
+async def dispatch_mcp_call(
+    server: MCPServer,
+    tool_name: str,
+    arguments: dict[str, Any],
+    *,
+    label: str,
+    result_transform: ResultTransform | None = None,
+) -> Any:
+    """Execute and normalize one MCP tool call at the shared dispatch point."""
+    result = await server.call_tool(tool_name, arguments)
+    if result_transform is not None:
+        return result_transform(label, result.model_dump(mode="json"))
+    tool_output = _mcp_result_to_tool_output(server, result)
+    if getattr(result, "isError", False):
+        return errored_tool_output(tool_output)
+    return tool_output
 
 
 def _retry_delay(attempt: int, retry_after: float | None) -> float:
@@ -373,7 +515,6 @@ class SupervisedMcpSession:
         is unavailable. A call rejection keeps the connection usable because the
         provider rejected the request, not the session.
         """
-        from strix.tools.mcp.client import dispatch_mcp_call
 
         async def job(server: MCPServer) -> Any:
             return await dispatch_mcp_call(
@@ -386,12 +527,8 @@ class SupervisedMcpSession:
 
         outcome = await self._run_job(job, phase="call")
         if outcome.call_failure is not None:
-            from strix.tools.mcp.client import errored_tool_output
-
             return errored_tool_output(self._call_rejected_message(outcome.call_failure))
         if outcome.dead:
-            from strix.tools.mcp.client import errored_tool_output
-
             return errored_tool_output(self._unavailable_message())
         return outcome.value
 
@@ -695,8 +832,6 @@ class SupervisedMcpSession:
         same task before the error propagates, so a failed connect never orphans
         an MCP subprocess or half-open HTTP session.
         """
-        from strix.tools.mcp.client import build_server
-
         if self._config is None:
             raise RuntimeError(f"MCP connection {self._name!r} has no config to connect")
         built = build_server(self._config)

@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from agents import RunContextWrapper, function_tool
 
-from strix.tools.mcp.client import errored_tool_output
+from strix.tools.mcp.failures import errored_tool_output
 from strix.tools.mcp.naming import namespaced_tool_name
 from strix.tools.mcp.registry import MCP_REGISTRY_CONTEXT_KEY, McpRegistry
 from strix.tools.mcp.session import McpConnectionUnavailableError
