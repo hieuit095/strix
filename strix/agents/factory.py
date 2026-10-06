@@ -7,7 +7,7 @@ import inspect
 import json
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from agents.agent import ToolsToFinalOutputResult
 from agents.sandbox import SandboxAgent
@@ -166,10 +166,11 @@ def _schema_types(spec: dict[str, Any]) -> set[str]:
     if isinstance(raw, str):
         types.add(raw)
     elif isinstance(raw, list):
-        types.update(t for t in raw if isinstance(t, str))
-    for variant in spec.get("anyOf") or ():
+        types.update(value for value in cast("list[object]", raw) if isinstance(value, str))
+    variants = cast("list[object]", spec.get("anyOf") or [])
+    for variant in variants:
         if isinstance(variant, dict):
-            types |= _schema_types(variant)
+            types |= _schema_types(cast("dict[str, Any]", variant))
     types.discard("null")
     return types
 
@@ -178,8 +179,10 @@ def _allows_null(spec: dict[str, Any]) -> bool:
     raw = spec.get("type")
     if raw == "null" or (isinstance(raw, list) and "null" in raw):
         return True
+    variants = cast("list[object]", spec.get("anyOf") or [])
     return any(
-        isinstance(variant, dict) and _allows_null(variant) for variant in spec.get("anyOf") or ()
+        isinstance(variant, dict) and _allows_null(cast("dict[str, Any]", variant))
+        for variant in variants
     )
 
 
@@ -201,13 +204,14 @@ def _decode_structured(value: str, types: set[str]) -> Any:
     if not stripped:
         # An empty string is the model's "no value" for a list/dict param; give it
         # the empty container so it validates instead of failing the type check.
-        return [] if "array" in types else {}
+        empty: Any = [] if "array" in types else {}
+        return empty
     try:
-        decoded = json.loads(stripped)
+        decoded: Any = json.loads(stripped)
     except json.JSONDecodeError:
         return value
     wanted = list if "array" in types else dict
-    return decoded if isinstance(decoded, wanted) else value
+    return cast("Any", decoded) if isinstance(decoded, wanted) else value
 
 
 def _coerce_argument(value: Any, spec: dict[str, Any], *, nullable: bool = False) -> Any:
@@ -222,8 +226,9 @@ def _coerce_argument(value: Any, spec: dict[str, Any], *, nullable: bool = False
     if isinstance(value, list | dict) and "string" in types and not types & {"array", "object"}:
         return json.dumps(value, ensure_ascii=False)
     if isinstance(value, str) and types & {"array", "object"} and "string" not in types:
-        return _decode_structured(value, types)
-    return value
+        decoded: Any = _decode_structured(value, types)
+        return decoded
+    return cast("Any", value)
 
 
 # Only query tools get nullish coercion: there a literal "null" is a filter that
@@ -241,22 +246,26 @@ def _coerce_arguments(raw_input: str, schema: dict[str, Any], *, nullish: bool =
         return raw_input
     if not isinstance(payload, dict):
         return raw_input
+    payload_data = cast("dict[str, Any]", payload)
+    properties_data = cast("dict[str, object]", properties)
 
     changed = False
-    for key, value in payload.items():
-        spec = properties.get(key)
+    for key, value in payload_data.items():
+        spec = properties_data.get(key)
         if not isinstance(spec, dict):
             continue
         coerced = _coerce_argument(
-            value, spec, nullable=nullish and _is_nullable(key, spec, schema)
+            value,
+            cast("dict[str, Any]", spec),
+            nullable=nullish and _is_nullable(key, cast("dict[str, Any]", spec), schema),
         )
         if coerced is not value:
-            payload[key] = coerced
+            payload_data[key] = coerced
             changed = True
 
     if not changed:
         return raw_input
-    return json.dumps(payload, ensure_ascii=False)
+    return json.dumps(payload_data, ensure_ascii=False)
 
 
 def _with_coerced_arguments(tool: FunctionTool) -> FunctionTool:
@@ -351,7 +360,7 @@ def _bound_custom_tool(tool: CustomTool) -> CustomTool:
 def _configure_filesystem_tools(
     toolset: Any, *, chat_completions: bool, strict_schemas: bool = True
 ) -> None:
-    for name, tool in vars(toolset).items():
+    for name, tool in cast("dict[str, Any]", vars(toolset)).items():
         if chat_completions:
             if isinstance(tool, CustomTool):
                 setattr(toolset, name, _custom_tool_as_function_tool(tool))
@@ -443,8 +452,9 @@ def _wrap_exec_command(tool: FunctionTool) -> FunctionTool:
         if isinstance(parsed, dict):
             if "shell" not in parsed:
                 parsed["shell"] = "bash"
-            _apply_shell_output_cap(parsed)
-            raw_input = json.dumps(parsed)
+            parsed_data = cast("dict[str, Any]", parsed)
+            _apply_shell_output_cap(parsed_data)
+            raw_input = json.dumps(parsed_data)
         try:
             return await invoke_tool(ctx, raw_input)
         except ValidationError as exc:
@@ -470,10 +480,11 @@ def _wrap_write_stdin(tool: FunctionTool) -> FunctionTool:
         except json.JSONDecodeError:
             parsed = None
         if isinstance(parsed, dict):
-            if isinstance(parsed.get("chars"), str):
-                parsed["chars"] = _decode_chars_escape(parsed["chars"])
-            _apply_shell_output_cap(parsed)
-            raw_input = json.dumps(parsed)
+            parsed_data = cast("dict[str, Any]", parsed)
+            if isinstance(parsed_data.get("chars"), str):
+                parsed_data["chars"] = _decode_chars_escape(parsed_data["chars"])
+            _apply_shell_output_cap(parsed_data)
+            raw_input = json.dumps(parsed_data)
         try:
             return await invoke_tool(ctx, raw_input)
         except ValidationError as exc:
@@ -486,7 +497,7 @@ def _wrap_write_stdin(tool: FunctionTool) -> FunctionTool:
 def _configure_shell_tools(
     toolset: Any, *, chat_completions: bool, strict_schemas: bool = True
 ) -> None:
-    for name, tool in vars(toolset).items():
+    for name, tool in cast("dict[str, Any]", vars(toolset)).items():
         if not isinstance(tool, FunctionTool):
             continue
         wrapped = _with_strictness(_with_coerced_arguments(tool), strict_schemas)
@@ -526,7 +537,11 @@ def _lifecycle_tool_completed(tool_name: str, output: Any) -> bool:
         parsed = json.loads(output)
     except (TypeError, ValueError):
         return False
-    return bool(isinstance(parsed, dict) and parsed.get("success") and parsed.get(completion_key))
+    return bool(
+        isinstance(parsed, dict)
+        and cast("dict[str, Any]", parsed).get("success")
+        and cast("dict[str, Any]", parsed).get(completion_key)
+    )
 
 
 def _wait_tool_parked(tool_name: str, output: Any) -> bool:
@@ -538,8 +553,8 @@ def _wait_tool_parked(tool_name: str, output: Any) -> bool:
         return False
     return bool(
         isinstance(parsed, dict)
-        and parsed.get("success")
-        and parsed.get("wait_outcome") == "waiting"
+        and cast("dict[str, Any]", parsed).get("success")
+        and cast("dict[str, Any]", parsed).get("wait_outcome") == "waiting"
     )
 
 
@@ -548,8 +563,11 @@ def _finish_tool_use_behavior(
     tool_results: list[FunctionToolResult],
 ) -> ToolsToFinalOutputResult:
     """Stop only after a lifecycle tool reports successful completion."""
+    context = ctx.context
     interactive = (
-        bool(ctx.context.get("interactive", False)) if isinstance(ctx.context, dict) else False
+        bool(cast("dict[str, Any]", context).get("interactive", False))
+        if isinstance(context, dict)
+        else False
     )
     for tool_result in tool_results:
         if _lifecycle_tool_completed(tool_result.tool.name, tool_result.output):
