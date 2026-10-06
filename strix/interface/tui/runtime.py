@@ -11,7 +11,7 @@ import shutil
 import sys
 from copy import deepcopy
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO, cast
 
 from strix.config import load_settings, persist_current
 from strix.core.agents import AgentCoordinator
@@ -49,9 +49,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _revision_count(report: dict[str, Any]) -> int:
+def _revision_count(report: dict[str, object]) -> int:
     history = report.get("update_history")
-    return len(history) if isinstance(history, list) else 0
+    return len(cast("list[object]", history)) if isinstance(history, list) else 0
 
 
 class GoTuiPreActivationError(RuntimeError):
@@ -181,10 +181,9 @@ class GoTuiRuntime:
         candidate.max_turns = self.controller.max_turns
         candidate.scope_mode = self.controller.scope_mode
         candidate.diff_base = self.controller.diff_base
+        candidate_targets = cast("list[dict[str, Any]]", candidate.targets_info)
         existing_targets = [
-            str(target["original"])
-            for target in candidate.targets_info
-            if isinstance(target, dict) and target.get("original")
+            str(target["original"]) for target in candidate_targets if target.get("original")
         ]
         targets_changed = self.controller.targets != existing_targets
         persist_current()
@@ -337,8 +336,6 @@ class GoTuiRuntime:
             usage = dict(self.report_state.get_total_llm_usage())
             vulnerabilities = [
                 (report.get("id", index), _revision_count(report))
-                if isinstance(report, dict)
-                else index
                 for index, report in enumerate(self.report_state.vulnerability_reports)
             ]
         return json.dumps(
