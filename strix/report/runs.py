@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from strix.core.paths import run_record_path, runs_base_dir, runtime_state_dir
 
@@ -22,6 +22,12 @@ class RunSummary:
     status: str
     findings: int
     resumable: bool
+
+
+def _json_list_length(value: object) -> int:
+    if not isinstance(value, list):
+        return 0
+    return len(cast("list[object]", value))
 
 
 def list_run_summaries(*, cwd: Path | None = None) -> list[RunSummary]:
@@ -46,25 +52,31 @@ def list_run_summaries(*, cwd: Path | None = None) -> list[RunSummary]:
 def _summarize(run_dir: Path, record: Any) -> RunSummary:
     if not isinstance(record, dict):
         record = {}
-    findings = _load_json(run_dir / "vulnerabilities.json", default=[])
+    record = cast("dict[str, Any]", record)
+    empty_findings: list[Any] = []
+    findings = _load_json(run_dir / "vulnerabilities.json", default=empty_findings)
     return RunSummary(
         run_name=run_dir.name,
         target=_describe_target(record),
         started_at=str(record.get("start_time") or ""),
         ended_at=str(record.get("end_time") or ""),
         status=str(record.get("status") or "unknown"),
-        findings=len(findings) if isinstance(findings, list) else 0,
+        findings=_json_list_length(findings),
         resumable=(runtime_state_dir(run_dir) / "agents.json").is_file(),
     )
 
 
 def _describe_target(record: dict[str, Any]) -> str:
-    targets = record.get("targets_info")
-    originals = [
-        str(entry["original"])
-        for entry in targets or []
-        if isinstance(entry, dict) and entry.get("original")
-    ]
+    targets_value: Any = record.get("targets_info")
+    if not isinstance(targets_value, list):
+        targets_value = []
+    targets: list[Any] = cast("Any", targets_value)
+    originals: list[str] = []
+    for entry in targets:
+        if isinstance(entry, dict):
+            target_entry = cast("dict[str, Any]", entry)
+            if target_entry.get("original"):
+                originals.append(str(target_entry["original"]))
     if originals:
         if len(originals) == 1:
             return originals[0]
