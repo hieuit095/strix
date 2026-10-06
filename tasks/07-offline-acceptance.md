@@ -105,4 +105,12 @@ Environment diagnostic riêng: config Pyright tạm dưới /tmp giữ nguyên s
 - A diagnostic-only typing experiment temporarily reduced Pyright to 721 diagnostics but added out-of-scope production changes; those changes were reverted. A test command with nonexistent `tests/test_report_state.py` exited **4**; the corrected report/telemetry selection reached 201 passed tests but hung on outbound HTTP and was interrupted, so it is **not** acceptance evidence. No unrelated baseline cleanup is retained.
 - Task 07 remains an offline required-gate failure. Earlier full-suite success does not make check-all green. Do not mark this task complete until its exact gates pass.
 
+### Typing-gate remediation progress — 06/10/2026
+
+- Type-only JSON-boundary annotations in `strix/report/state.py` and a structural telemetry protocol in the existing `strix/telemetry/_common.py` remove Pyright uncertainty without adding a production module, ignore, or runtime branch. The existing malformed-input guards and telemetry exception fallback remain in place.
+- `UV_CACHE_DIR=/tmp/strix-uv-cache uv run --offline pyright strix/report/state.py strix/telemetry/_common.py strix/telemetry/posthog.py strix/telemetry/scarf.py` → exit **0**, 0 errors.
+- `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 180s uv run --offline pytest tests/test_cost_tracking.py tests/test_report_coverage.py tests/test_report_writer.py tests/test_reporting_fields.py tests/test_telemetry_errors.py tests/test_telemetry_resume.py -q` → exit **0**, **178 passed**, 2 existing Pydantic warnings.
+- `UV_CACHE_DIR=/tmp/strix-uv-cache uv run --offline ruff check strix/report/state.py strix/telemetry/_common.py strix/telemetry/posthog.py strix/telemetry/scarf.py` → exit **0**; matching `ruff format --check` → exit **0**; file-scoped mypy → exit **0**.
+- `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 240s make check-all` → exit **2**. Ruff and mypy pass; repository Pyright count decreased from **784 to 719**, still across existing project files. Task 07 remains **not accepted** until the repository-wide gate passes.
+
 Pending commit groups khi Git writable: (1) JEV choice parser + test/Task04 record; (2) preservation tests + docs/routing + Task07 record; (3) live harness + Task08/README evidence. Không tạo commit giả ở alternate Git directory hoặc push để bypass read-only .git.

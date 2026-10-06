@@ -284,8 +284,9 @@ class ReportState:
                 self.end_time = data["end_time"]
             scan_results = data.get("scan_results")
             if isinstance(scan_results, dict):
-                self.scan_results = scan_results
-                self.final_scan_result = self._format_final_scan_result(scan_results)
+                typed_scan_results = cast("dict[str, Any]", scan_results)
+                self.scan_results = typed_scan_results
+                self.final_scan_result = self._format_final_scan_result(typed_scan_results)
             self._hydrate_llm_usage(data.get("llm_usage"))
             self._telemetry_llm_usage_baseline = self._build_llm_usage_record()
             logger.info("report state hydrated run.json from %s", run_dir)
@@ -304,7 +305,11 @@ class ReportState:
                 raise RuntimeError(
                     f"vulnerabilities.json at {json_path} is not a list",
                 )
-            self.vulnerability_reports = [r for r in data if isinstance(r, dict)]
+            self.vulnerability_reports = [
+                cast("dict[str, Any]", report)
+                for report in cast("list[object]", data)
+                if isinstance(report, dict)
+            ]
             for r in self.vulnerability_reports:
                 # A finding written before the class was persisted still carries the
                 # metadata of its class, so name the class it always had.
@@ -438,7 +443,13 @@ class ReportState:
 
     def _deleted_vulnerability_reports(self) -> list[dict[str, Any]]:
         raw = self.run_record.get("deleted_vulnerability_reports")
-        return [e for e in raw if isinstance(e, dict)] if isinstance(raw, list) else []
+        if not isinstance(raw, list):
+            return []
+        return [
+            cast("dict[str, Any]", entry)
+            for entry in cast("list[object]", raw)
+            if isinstance(entry, dict)
+        ]
 
     def _next_report_id(self) -> str:
         """Allocate the id after every id this run has ever handed out.
@@ -521,9 +532,13 @@ class ReportState:
                 entry[f"previous_{key}"] = report[key]
 
         raw_history = report.get("update_history")
-        history: list[dict[str, Any]] = (
-            [e for e in raw_history if isinstance(e, dict)] if isinstance(raw_history, list) else []
-        )
+        history: list[dict[str, Any]] = []
+        if isinstance(raw_history, list):
+            history = [
+                cast("dict[str, Any]", entry)
+                for entry in cast("list[object]", raw_history)
+                if isinstance(entry, dict)
+            ]
         history.append(entry)
 
         revised = {**report, **changed}
@@ -677,11 +692,19 @@ class ReportState:
 
     def get_process_llm_providers(self) -> dict[str, dict[str, float]]:
         """Per-provider usage since this process started, like get_process_llm_usage."""
-        baseline = self._telemetry_llm_usage_baseline.get("providers") or {}
+        baseline = cast(
+            "dict[str, dict[str, float]]",
+            self._telemetry_llm_usage_baseline.get("providers") or {},
+        )
+        recorded = cast(
+            "dict[str, dict[str, float]]", self._llm_usage.to_record().get("providers") or {}
+        )
         providers: dict[str, dict[str, float]] = {}
-        for name, tally in (self._llm_usage.to_record().get("providers") or {}).items():
+        for name, tally in recorded.items():
             before = baseline.get(name) or {}
-            delta = {key: max(0, value - _number(before.get(key))) for key, value in tally.items()}
+            delta: dict[str, float] = {
+                key: max(0, value - _number(before.get(key))) for key, value in tally.items()
+            }
             if delta["requests"]:
                 providers[name] = delta
         return providers
@@ -907,23 +930,25 @@ class ReportState:
         return self._sarif_repo_ctx
 
     def _derive_repository_context(self) -> dict[str, Any] | None:
-        targets = self.run_record.get("targets_info") or []
+        targets: Any = self.run_record.get("targets_info") or []
         if not isinstance(targets, list):
             return None
-        repo_targets = [
-            target
-            for target in targets
-            if isinstance(target, dict) and target.get("type") == "repository"
-        ]
+        repo_targets: list[dict[str, Any]] = []
+        for item in cast("list[object]", targets):
+            if isinstance(item, dict):
+                target = cast("dict[str, Any]", item)
+                if target.get("type") == "repository":
+                    repo_targets.append(target)
         # Provenance binds the whole run to one repo; with multiple repo targets
         # that's ambiguous, so omit it rather than mis-attributing later repos'
         # findings to the first repo's URI/commit.
         if len(repo_targets) != 1:
             return None
         target = repo_targets[0]
-        details = target.get("details") or {}
+        details: Any = target.get("details") or {}
         if not isinstance(details, dict):
             return None
+        details = cast("dict[str, Any]", details)
         uri = details.get("target_repo")
         if not isinstance(uri, str) or not uri.strip():
             return None
@@ -962,13 +987,15 @@ def openrouter_stream_cost(usage: Any) -> float | None:
     """
     if not isinstance(usage, dict):
         return None
+    usage = cast("dict[str, Any]", usage)
     total = 0.0
     cost = usage.get("cost")
     if isinstance(cost, int | float) and cost > 0:
         total += float(cost)
     if bool(usage.get("is_byok")):
         details = usage.get("cost_details")
-        upstream = details.get("upstream_inference_cost") if isinstance(details, dict) else None
+        details_data = cast("dict[str, Any]", details) if isinstance(details, dict) else {}
+        upstream = details_data.get("upstream_inference_cost")
         if isinstance(upstream, int | float) and upstream > 0:
             total += float(upstream)
     return total if total > 0 else None
@@ -1031,14 +1058,17 @@ def record_openrouter_provider(provider: Any, usage: Any) -> None:
     report_state = get_global_report_state()
     if report_state is None or not isinstance(usage, dict):
         return
-    details = usage.get("prompt_tokens_details")
+    usage = cast("dict[str, Any]", usage)
+    details: Any = usage.get("prompt_tokens_details")
     report_state.record_llm_provider(
         provider if isinstance(provider, str) and provider else "unknown",
         agent_id=current_call_context().agent_id,
         input_tokens=int(_number(usage.get("prompt_tokens"))),
-        cached_tokens=int(_number(details.get("cached_tokens")))
-        if isinstance(details, dict)
-        else 0,
+        cached_tokens=int(
+            _number(cast("dict[str, Any]", details).get("cached_tokens"))
+            if isinstance(details, dict)
+            else 0
+        ),
         cost=openrouter_stream_cost(usage) or 0.0,
     )
 
@@ -1051,22 +1081,21 @@ def litellm_cost_callback(
 ) -> None:
     """LiteLLM ``success_callback`` adapter; forwards observed cost to the active scan."""
     cost: float | None = None
-    raw = kwargs.get("response_cost") if isinstance(kwargs, dict) else None
+    kwargs_data = cast("dict[str, Any]", kwargs) if isinstance(kwargs, dict) else {}
+    raw = kwargs_data.get("response_cost")
     if isinstance(raw, int | float) and raw > 0:
         cost = float(raw)
 
     if cost is None:
-        hidden = getattr(completion_response, "_hidden_params", None) or {}
-        candidate = hidden.get("response_cost") if isinstance(hidden, dict) else None
+        hidden: Any = getattr(completion_response, "_hidden_params", None) or {}
+        hidden_data = cast("dict[str, Any]", hidden) if isinstance(hidden, dict) else {}
+        candidate = hidden_data.get("response_cost")
         if isinstance(candidate, int | float) and candidate > 0:
             cost = float(candidate)
         else:
-            headers = hidden.get("additional_headers") or {} if isinstance(hidden, dict) else {}
-            raw = (
-                headers.get("llm_provider-x-litellm-response-cost")
-                if isinstance(headers, dict)
-                else None
-            )
+            headers: Any = hidden_data.get("additional_headers") or {}
+            header_data = cast("dict[str, Any]", headers) if isinstance(headers, dict) else {}
+            raw = header_data.get("llm_provider-x-litellm-response-cost")
             try:
                 value = float(raw) if raw is not None else None
             except (TypeError, ValueError):
@@ -1137,7 +1166,8 @@ def _estimate_response_cost(kwargs: Any, completion_response: Any) -> float | No
     """
     from litellm import completion_cost
 
-    model = kwargs.get("model") if isinstance(kwargs, dict) else None
+    kwargs_data = cast("dict[str, Any]", kwargs) if isinstance(kwargs, dict) else {}
+    model = kwargs_data.get("model")
     if not isinstance(model, str) or not model:
         if isinstance(completion_response, dict):
             model = cast("dict[str, Any]", completion_response).get("model")
@@ -1147,9 +1177,9 @@ def _estimate_response_cost(kwargs: Any, completion_response: Any) -> float | No
         return None
 
     provider = None
-    litellm_params = kwargs.get("litellm_params") if isinstance(kwargs, dict) else None
+    litellm_params = kwargs_data.get("litellm_params")
     if isinstance(litellm_params, dict):
-        provider = litellm_params.get("custom_llm_provider")
+        provider = cast("dict[str, Any]", litellm_params).get("custom_llm_provider")
 
     usage_payload = _usage_payload(completion_response)
     if usage_payload is None:
@@ -1173,7 +1203,7 @@ def _estimate_response_cost(kwargs: Any, completion_response: Any) -> float | No
             )
         except Exception:  # nosec B112  # noqa: BLE001, S112
             continue
-        if isinstance(value, int | float) and value > 0:
+        if value > 0:
             return float(value)
     return None
 
