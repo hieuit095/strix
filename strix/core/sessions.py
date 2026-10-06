@@ -14,7 +14,7 @@ from agents.memory import SQLiteSession
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Generator
     from pathlib import Path
 
     from agents.items import TResponseInputItem
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class _PooledConnectionSession(SQLiteSession):
     @contextmanager
-    def _locked_connection(self) -> Iterator[sqlite3.Connection]:
+    def _locked_connection(self) -> Generator[sqlite3.Connection, None, None]:
         with self._lock:
             if self._closed:
                 raise RuntimeError("SQLiteSession is closed")
@@ -63,23 +63,27 @@ _INHERITED_IMAGE_TEXT = "[screenshot omitted from inherited context]"
 
 
 def _output_has_image(item_dict: dict[str, Any]) -> bool:
-    return (
-        item_dict.get("type") == "function_call_output"
-        and isinstance(item_dict.get("output"), list)
-        and any(isinstance(b, dict) and b.get("type") == "input_image" for b in item_dict["output"])
+    output = item_dict.get("output")
+    if item_dict.get("type") != "function_call_output" or not isinstance(output, list):
+        return False
+    blocks: list[Any] = cast("Any", output)
+    return any(
+        isinstance(block, dict) and cast("dict[str, Any]", block).get("type") == "input_image"
+        for block in blocks
     )
 
 
 def _elided_output(item_dict: dict[str, Any], text: str) -> dict[str, Any]:
     # Replace only image blocks; sibling text blocks are preserved.
     output = item_dict.get("output")
-    blocks = output if isinstance(output, list) else []
+    blocks: list[Any] = cast("Any", output) if isinstance(output, list) else []
     return {
         "type": "function_call_output",
         "call_id": item_dict.get("call_id"),
         "output": [
             {"type": "input_text", "text": text}
-            if isinstance(block, dict) and block.get("type") == "input_image"
+            if isinstance(block, dict)
+            and cast("dict[str, Any]", block).get("type") == "input_image"
             else block
             for block in blocks
         ],
@@ -110,11 +114,10 @@ async def _rewrite_session(
         rebuilt, changed = transform(list(items))
         if not changed:
             return False
-        rebuilt_items = cast("list[TResponseInputItem]", rebuilt)
-        original_items = cast("list[TResponseInputItem]", list(items))
+        original_items = list(items)
         await session.clear_session()
         try:
-            await session.add_items(rebuilt_items)
+            await session.add_items(rebuilt)
         except Exception:
             logger.exception("session rewrite failed; restoring original items")
             await session.clear_session()
@@ -204,10 +207,13 @@ def scrub_images_from_items(items: list[Any]) -> list[Any]:
 
     def _scrub(obj: Any) -> Any:
         if isinstance(obj, dict):
+            obj = cast("dict[str, Any]", obj)
             if obj.get("type") == "input_image":
                 return {"type": "input_text", "text": _INHERITED_IMAGE_TEXT}
+            obj = cast("dict[str, Any]", obj)
             return {k: _scrub(v) for k, v in obj.items()}
         if isinstance(obj, list):
+            obj = cast("Any", obj)
             return [_scrub(v) for v in obj]
         return obj
 
