@@ -3,13 +3,13 @@ from __future__ import annotations
 from strix.routing.types import Envelope, Tier, max_tier, min_tier
 
 
-def test_tier_order_is_worker_specialist_expert() -> None:
-    assert list(Tier) == [Tier.WORKER, Tier.SPECIALIST, Tier.EXPERT]
+def test_tier_order_is_worker_specialist() -> None:
+    assert list(Tier) == [Tier.WORKER, Tier.SPECIALIST]
 
 
 def test_max_and_min_tier() -> None:
-    assert max_tier(Tier.WORKER, Tier.EXPERT) is Tier.EXPERT
-    assert min_tier(Tier.SPECIALIST, Tier.EXPERT) is Tier.SPECIALIST
+    assert max_tier(Tier.WORKER, Tier.SPECIALIST) is Tier.SPECIALIST
+    assert min_tier(Tier.SPECIALIST, Tier.WORKER) is Tier.WORKER
 
 
 def test_envelope_defaults() -> None:

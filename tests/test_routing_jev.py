@@ -83,9 +83,7 @@ async def test_jev_choice_precedes_higher_probability_and_logs_safe_usage(
             timeout_s=5,
             on_usage=lambda _usage: None,
         )
-        router = HybridModelRouter(
-            adapter, BudgetGovernor(1, 1), specialist_threshold=0.65, expert_threshold=0.65
-        )
+        router = HybridModelRouter(adapter, BudgetGovernor(1), specialist_threshold=0.65)
         decision = await router.route(Envelope("TASK_SECRET_27", ("business_logic",)))
 
     assert decision.tier is Tier.WORKER
@@ -113,9 +111,7 @@ async def test_jev_choice_cannot_bypass_specialist_threshold() -> None:
             timeout_s=5,
             on_usage=lambda _usage: None,
         )
-        router = HybridModelRouter(
-            adapter, BudgetGovernor(1, 1), specialist_threshold=0.65, expert_threshold=0.65
-        )
+        router = HybridModelRouter(adapter, BudgetGovernor(1), specialist_threshold=0.65)
         decision = await router.route(Envelope("synthetic", ("business_logic",)))
     assert (decision.tier, decision.reason, decision.jev_choice) == (
         Tier.WORKER,
@@ -353,11 +349,9 @@ async def test_http_error_has_one_request_and_router_falls_back(status: int) -> 
             timeout_s=5,
             on_usage=usage.append,
         )
-        router = HybridModelRouter(
-            adapter, BudgetGovernor(1, 1), specialist_threshold=0.65, expert_threshold=0.65
-        )
-        d = await router.route(Envelope("t", ("rce",)))
-        assert (d.tier, d.reason) == (Tier.SPECIALIST, "jev_error")
+        router = HybridModelRouter(adapter, BudgetGovernor(1), specialist_threshold=0.65)
+        d = await router.route(Envelope("t", ("business_logic",)))
+        assert (d.tier, d.reason) == (Tier.WORKER, "jev_error")
     assert len(requests) == 1
     assert not usage
 
@@ -367,10 +361,8 @@ async def test_router_logs_only_error_class(caplog: pytest.LogCaptureFixture) ->
         async def decide(self, _envelope: Envelope, _question: str):
             raise ValueError("KEY_SECRET_51 SERVER_SECRET_82")
 
-    router = HybridModelRouter(
-        FailedClient(), BudgetGovernor(1, 1), specialist_threshold=0.65, expert_threshold=0.65
-    )
-    d = await router.route(Envelope("t", ("rce",)))
+    router = HybridModelRouter(FailedClient(), BudgetGovernor(1), specialist_threshold=0.65)
+    d = await router.route(Envelope("t", ("business_logic",)))
     assert d.reason == "jev_error"
     assert "KEY_SECRET_51" not in caplog.text
     assert "SERVER_SECRET_82" not in caplog.text
@@ -397,15 +389,13 @@ async def test_transport_and_json_errors(failure: str) -> None:
             timeout_s=5,
             on_usage=usage.append,
         )
-        router = HybridModelRouter(
-            adapter, BudgetGovernor(1, 1), specialist_threshold=0.65, expert_threshold=0.65
-        )
+        router = HybridModelRouter(adapter, BudgetGovernor(1), specialist_threshold=0.65)
         if failure == "cancel":
             with pytest.raises(asyncio.CancelledError):
-                await router.route(Envelope("t", ("rce",)))
+                await router.route(Envelope("t", ("business_logic",)))
         else:
-            d = await router.route(Envelope("t", ("rce",)))
-            assert (d.tier, d.reason) == (Tier.SPECIALIST, "jev_error")
+            d = await router.route(Envelope("t", ("business_logic",)))
+            assert (d.tier, d.reason) == (Tier.WORKER, "jev_error")
     assert len(requests) == 1
     assert not usage
 
@@ -425,11 +415,9 @@ async def test_non_string_choice_falls_back_safely(choice: object) -> None:
             timeout_s=5,
             on_usage=usage.append,
         )
-        router = HybridModelRouter(
-            adapter, BudgetGovernor(1, 1), specialist_threshold=0.65, expert_threshold=0.65
-        )
-        decision = await router.route(Envelope("synthetic", ("rce",)))
-    assert (decision.tier, decision.reason) == (Tier.SPECIALIST, "jev_error")
+        router = HybridModelRouter(adapter, BudgetGovernor(1), specialist_threshold=0.65)
+        decision = await router.route(Envelope("synthetic", ("business_logic",)))
+    assert (decision.tier, decision.reason) == (Tier.WORKER, "jev_error")
     assert len(usage) == 1 and usage[0].total_tokens == 183
 
 

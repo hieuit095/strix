@@ -9,8 +9,8 @@ class BudgetGovernor:
     Runs on a single event loop, so it needs no locking.
     """
 
-    def __init__(self, specialist_cap: float, expert_cap: float) -> None:
-        self._caps = {Tier.SPECIALIST: specialist_cap, Tier.EXPERT: expert_cap}
+    def __init__(self, specialist_cap: float) -> None:
+        self._caps = {Tier.SPECIALIST: specialist_cap}
         self.counts: dict[Tier, int] = dict.fromkeys(Tier, 0)
 
     def _allowed(self, tier: Tier) -> bool:

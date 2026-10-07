@@ -444,7 +444,7 @@ async def run_strix_scan(
                     timeout_s=routing.jev_timeout_s,
                     on_usage=record_routing_usage,
                 )
-            governor = BudgetGovernor(routing.specialist_cap, routing.expert_cap)
+            governor = BudgetGovernor(routing.specialist_cap)
             if coordinator.routing_counts is not None:
                 governor.counts = coordinator.routing_counts
             coordinator.routing_counts = governor.counts
@@ -452,7 +452,6 @@ async def run_strix_scan(
                 decision_client,
                 governor,
                 specialist_threshold=routing.specialist_threshold,
-                expert_threshold=routing.expert_threshold,
                 available=frozenset(tier_models),
             )
         targets = cast("list[dict[str, Any]]", scan_config.get("targets") or [])

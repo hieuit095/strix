@@ -7,7 +7,6 @@ from enum import IntEnum
 class Tier(IntEnum):
     WORKER = 0
     SPECIALIST = 1
-    EXPERT = 2
 
 
 def max_tier(a: Tier, b: Tier) -> Tier:

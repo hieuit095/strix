@@ -80,21 +80,14 @@ def commandcode_settings(**routing: object) -> Settings:
         routing=RoutingSettings(
             enabled=True,
             specialist_model="openai/xiaomi/mimo-v2.6-pro",
-            expert_model="openai/gpt-6.1-sol",
             **routing,
         ),
     )
 
 
-def test_configured_models_use_resolved_worker_and_optional_expert() -> None:
+def test_configured_models_use_resolved_worker_and_specialist() -> None:
 
     settings = commandcode_settings()
-    assert configured_models(settings, worker_model="openai/override") == {
-        Tier.WORKER: "openai/override",
-        Tier.SPECIALIST: "openai/xiaomi/mimo-v2.6-pro",
-        Tier.EXPERT: "openai/gpt-6.1-sol",
-    }
-    settings.routing.expert_model = None
     assert configured_models(settings, worker_model="openai/override") == {
         Tier.WORKER: "openai/override",
         Tier.SPECIALIST: "openai/xiaomi/mimo-v2.6-pro",
@@ -113,7 +106,6 @@ def test_configured_models_use_resolved_worker_and_optional_expert() -> None:
         ("api_type", None, "api_type"),
         ("api_type", "responses", "api_type"),
         ("specialist_model", "openrouter/spec", "model"),
-        ("expert_model", "anthropic/expert", "model"),
         ("extra_headers", {"X-Cmd-Zdr": "1"}, "ZDR"),
         ("api_key", "", "api_key"),
     ],
@@ -173,9 +165,7 @@ def test_incompatible_tool_flags_rejected() -> None:
         validate_routing_config(settings, worker_model=settings.llm.model)
 
 
-@pytest.mark.parametrize(
-    "wire_id", ["deepseek/deepseek-v4.1-flash", "xiaomi/mimo-v2.6-pro", "gpt-6.1-sol"]
-)
+@pytest.mark.parametrize("wire_id", ["deepseek/deepseek-v4.1-flash", "xiaomi/mimo-v2.6-pro"])
 async def test_native_sdk_wire_ids(wire_id: str, monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(_openai_shared, "_use_responses_by_default", False)

@@ -262,15 +262,22 @@ def mock_jev_http(
     return requests, clients
 
 
-async def test_jev_selects_expert_and_records_usage_once(
+async def test_jev_expert_answer_clamps_to_specialist_and_records_usage_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     state = SimpleNamespace(cost=0, get_total_llm_cost=lambda: 0, record_sdk_usage=MagicMock())
     requests, clients = mock_jev_http(
         monkeypatch, probs={"worker": 0.05, "specialist": 0.05, "expert": 0.9}
     )
-    result = await run_spawn(monkeypatch, tmp_path, enabled=True, jev=True, report_state=state)
-    assert result["children"][0]["run_config"].model == "openai/gpt-6.1-sol"
+    result = await run_spawn(
+        monkeypatch,
+        tmp_path,
+        enabled=True,
+        jev=True,
+        skills=["business_logic"],
+        report_state=state,
+    )
+    assert result["children"][0]["run_config"].model == "openai/xiaomi/mimo-v2.6-pro"
     assert len(requests) == 1 and len(clients) == 1
     assert clients[0].is_closed
     state.record_sdk_usage.assert_called_once()
@@ -294,6 +301,7 @@ async def test_budget_rechecked_after_jev(
         tmp_path,
         enabled=True,
         jev=True,
+        skills=["business_logic"],
         report_state=state,
         max_budget=5,
         budget_policy=policy,
@@ -340,11 +348,25 @@ async def test_jev_client_closed_on_every_exit(
 ) -> None:
     requests, clients = mock_jev_http(monkeypatch)
     if outcome == "success":
-        await run_spawn(monkeypatch, tmp_path, enabled=True, jev=True, outcome=outcome)
+        await run_spawn(
+            monkeypatch,
+            tmp_path,
+            enabled=True,
+            jev=True,
+            skills=["business_logic"],
+            outcome=outcome,
+        )
     else:
         error = asyncio.CancelledError if outcome == "cancel" else ValueError
         with pytest.raises(error):
-            await run_spawn(monkeypatch, tmp_path, enabled=True, jev=True, outcome=outcome)
+            await run_spawn(
+                monkeypatch,
+                tmp_path,
+                enabled=True,
+                jev=True,
+                skills=["business_logic"],
+                outcome=outcome,
+            )
     assert len(requests) == 1 and len(clients) == 1 and clients[0].is_closed
 
 
@@ -513,6 +535,7 @@ async def test_current_cost_prevents_routing(
         tmp_path,
         enabled=True,
         jev=True,
+        skills=["business_logic"],
         report_state=state,
         max_budget=5,
         budget_policy=policy,
@@ -530,6 +553,7 @@ async def test_reserve_rechecked_after_jev(monkeypatch: pytest.MonkeyPatch, tmp_
         tmp_path,
         enabled=True,
         jev=True,
+        skills=["business_logic"],
         report_state=state,
         max_budget=5,
         expected_error=SubagentBudgetReservedError,

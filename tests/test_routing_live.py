@@ -46,7 +46,6 @@ BASE = "https://api.commandcode.ai/provider/v1"
 MODELS = (
     "openai/deepseek/deepseek-v4.1-flash",
     "openai/xiaomi/mimo-v2.6-pro",
-    "openai/gpt-6.1-sol",
 )
 
 
@@ -129,7 +128,6 @@ def live_settings(commandcode_key: str) -> Settings:
     settings.llm.api_type = "chat_completions"
     settings.routing.enabled = True
     settings.routing.specialist_model = MODELS[1]
-    settings.routing.expert_model = MODELS[2]
     settings.routing.jev_enabled = False
     validate_routing_config(settings, worker_model=MODELS[0])
     return settings

@@ -23,13 +23,13 @@ def test_ambiguous_skill_asks_jev_worker_or_specialist() -> None:
 
 def test_high_impact_skill_cannot_be_downgraded_below_specialist() -> None:
     r = apply_hard_rules(env("rce"))
-    assert (r.floor, r.ceiling, r.ask_jev) == (Tier.SPECIALIST, Tier.EXPERT, True)
+    assert (r.floor, r.ceiling, r.ask_jev) == (Tier.SPECIALIST, Tier.SPECIALIST, True)
 
 
 def test_mixed_takes_the_highest_demand() -> None:
     r = apply_hard_rules(env("xss", "business_logic", "ssrf"))
     assert r.floor is Tier.SPECIALIST
-    assert r.ceiling is Tier.EXPERT
+    assert r.ceiling is Tier.SPECIALIST
 
 
 def test_severity_critical_raises_floor_to_specialist() -> None:
@@ -51,7 +51,7 @@ def test_skills_are_case_insensitive() -> None:
         (
             "vulnerabilities/broken_function_level_authorization",
             Tier.SPECIALIST,
-            Tier.EXPERT,
+            Tier.SPECIALIST,
         ),
     ],
 )

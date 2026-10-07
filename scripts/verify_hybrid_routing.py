@@ -26,7 +26,6 @@ RUNS = ROOT / "strix_runs"
 EXPECTED_MODELS = {
     "worker": "openai/deepseek/deepseek-v4.1-flash",
     "specialist": "openai/xiaomi/mimo-v2.6-pro",
-    "expert": "openai/gpt-6.1-sol",
 }
 ROUTE_LINE = re.compile(
     r"child routing tier=(worker|specialist|expert) model=([^ ]+) reason=([a-z_]+) "
@@ -45,12 +44,11 @@ def report(status: str, name: str, detail: str) -> bool:
     return status == "PASS"
 
 
-def _preflight() -> tuple[dict[str, str], bool, Path, list[str]]:
+def _preflight() -> tuple[dict[str, str], dict[str, float], bool, Path, list[str]]:
     env = os.environ
     settings = {
         "worker": env.get("STRIX_LLM", ""),
         "specialist": env.get("STRIX_ROUTING_SPECIALIST_MODEL", ""),
-        "expert": env.get("STRIX_ROUTING_EXPERT_MODEL", ""),
     }
     failures: list[str] = []
     if env.get("STRIX_ROUTING_ENABLED", "").lower() != "true":
@@ -61,25 +59,25 @@ def _preflight() -> tuple[dict[str, str], bool, Path, list[str]]:
         failures.append("LLM_API_BASE must use the CommandCode provider base")
     if env.get("STRIX_API_TYPE") != "chat_completions":
         failures.append("STRIX_API_TYPE must be chat_completions")
+    if env.get("STRIX_ROUTING_EXPERT_MODEL", "").strip():
+        failures.append("expert model configuration is no longer supported")
     for tier, expected in EXPECTED_MODELS.items():
         if settings[tier] != expected:
             failures.append(f"{tier} model must be configured as {expected}")
     route_policy = {
         "specialist_threshold": float(env.get("STRIX_ROUTING_SPECIALIST_THRESHOLD", "0.65")),
-        "expert_threshold": float(env.get("STRIX_ROUTING_EXPERT_THRESHOLD", "0.65")),
         "specialist_cap": float(env.get("STRIX_ROUTING_SPECIALIST_CAP", "0.25")),
-        "expert_cap": float(env.get("STRIX_ROUTING_EXPERT_CAP", "0.05")),
     }
     if route_policy != {
         "specialist_threshold": 0.65,
-        "expert_threshold": 0.65,
         "specialist_cap": 0.25,
-        "expert_cap": 0.05,
     }:
-        failures.append("routing thresholds/caps must be 0.65/0.65 and 0.25/0.05")
+        failures.append("specialist threshold/cap must be 0.65/0.25")
 
     settings_model = load_settings()
     jev_enabled = settings_model.routing.jev_enabled
+    if not jev_enabled:
+        failures.append("STRIX_ROUTING_JEV_ENABLED must be true for this verification")
     zdr_required = any(
         key.lower() == "x-cmd-zdr" and value.strip() == "1"
         for key, value in (settings_model.llm.extra_headers or {}).items()
@@ -318,7 +316,8 @@ def run() -> int:  # noqa: PLR0912, PLR0915
     decisions, bindings, jev_answers, jev_failures = _load_routes(run_dir)
     expected_by_tier = EXPECTED_MODELS
     log_matches = all(
-        row["model"] == expected_by_tier[row["tier"]]
+        row["tier"] in expected_by_tier
+        and row["model"] == expected_by_tier[row["tier"]]
         and row["reason"] in {"rule", "jev", "jev_error", "governor"}
         for row in decisions
     )
@@ -343,7 +342,29 @@ def run() -> int:  # noqa: PLR0912, PLR0915
     choice_routes = [
         (row["jev_choice"], row["tier"], row["reason"]) for row in decisions if row["jev_choice"]
     ]
-    for tier in ("worker", "specialist", "expert"):
+    if any(row["tier"] == "expert" for row in decisions):
+        passed &= report("FAIL", "expert tier removed", "an expert child route was logged")
+    else:
+        passed &= report(
+            "PASS", "expert tier removed", "no expert routing tier is configured or logged"
+        )
+    jev_routes = [row for row in decisions if row["reason"] in {"jev", "governor"}]
+    jev_choices_bound = (
+        bool(jev_answers)
+        and bool(jev_routes)
+        and all(
+            row.get("jev_choice") in {"worker", "specialist", "expert"}
+            and row["tier"] in expected_by_tier
+            for row in jev_routes
+        )
+    )
+    passed &= report(
+        "PASS" if jev_choices_bound else "FAIL",
+        "JEV choices remain within two-model map",
+        f"answers={len(jev_answers)}; JEV-bound decisions={len(jev_routes)}; "
+        f"tiers={dict(Counter(row['tier'] for row in jev_routes))}",
+    )
+    for tier in ("worker", "specialist"):
         seen = any(row["tier"] == tier for row in decisions)
         if seen:
             passed &= report("PASS", f"observed {tier} route", models[tier])
@@ -353,12 +374,6 @@ def run() -> int:  # noqa: PLR0912, PLR0915
                 f"{tier} route distribution",
                 f"no {tier} child; tiers={tier_distribution}; "
                 f"JEV choices={jev_choice_distribution}; choice-to-tier/reason={choice_routes}",
-            )
-        elif tier == "expert" and not jev_enabled:
-            report(
-                "SKIP",
-                "observed expert route",
-                "JEV is disabled; router cannot choose above its rule floor",
             )
         else:
             report(
@@ -405,6 +420,7 @@ def run() -> int:  # noqa: PLR0912, PLR0915
             "--scan-mode quick --max-budget 5 (STRIX_ROUTING_JEV_ENABLED=true)"
         ),
         "run_name": run_dir.name,
+        "target_url": args.target,
         "scan_exit_code": scan_exit,
         "scan_status": status,
         "models": models,
@@ -427,6 +443,9 @@ def run() -> int:  # noqa: PLR0912, PLR0915
         "jev_path": (
             "pass"
             if jev_enabled
+            and bool(jev_answers)
+            and bool(jev_routes)
+            and jev_choices_bound
             and any(row["reason"] == "jev" for row in decisions)
             and jev_evidence_matches(decisions, jev_answers, jev_failures)
             and jev_choice_evidence_matches(decisions)

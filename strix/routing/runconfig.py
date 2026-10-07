@@ -36,11 +36,8 @@ def run_config_for_model(base: RunConfig, model_name: str, settings: Settings) -
 
 def configured_models(settings: Settings, *, worker_model: str) -> dict[Tier, str]:
     models = {Tier.WORKER: worker_model}
-    if settings.routing.enabled:
-        if settings.routing.specialist_model:
-            models[Tier.SPECIALIST] = settings.routing.specialist_model
-        if settings.routing.expert_model:
-            models[Tier.EXPERT] = settings.routing.expert_model
+    if settings.routing.enabled and settings.routing.specialist_model:
+        models[Tier.SPECIALIST] = settings.routing.specialist_model
     return models
 
 

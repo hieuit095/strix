@@ -40,7 +40,7 @@ def apply_hard_rules(env: Envelope) -> RuleResult:
     if skills & AMBIGUOUS:
         ceiling, ask = max_tier(ceiling, Tier.SPECIALIST), True
     if skills & HIGH_IMPACT:
-        floor, ceiling, ask = max_tier(floor, Tier.SPECIALIST), Tier.EXPERT, True
+        floor, ceiling, ask = max_tier(floor, Tier.SPECIALIST), Tier.SPECIALIST, True
     if (env.severity or "").lower() in _SEVERE:
         floor = max_tier(floor, Tier.SPECIALIST)
         ceiling = max_tier(ceiling, Tier.SPECIALIST)

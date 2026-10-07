@@ -29,30 +29,27 @@ class HybridModelRouter:
         governor: BudgetGovernor,
         *,
         specialist_threshold: float,
-        expert_threshold: float,
         available: frozenset[Tier] = frozenset(Tier),
     ) -> None:
         self._client = client
         self._governor = governor
         self._specialist_threshold = specialist_threshold
-        self._expert_threshold = expert_threshold
         self._available = available
 
     def _pick(self, probs: dict[str, float], choice: str | None) -> Tier:
         target = Tier.WORKER
         if choice is None:
-            ceiling = Tier.EXPERT
+            ceiling = Tier.SPECIALIST
         else:
             ceiling = {
                 "worker": Tier.WORKER,
                 "specialist": Tier.SPECIALIST,
-                "expert": Tier.EXPERT,
+                # JEV's provider schema still has an expert answer; this router
+                # deliberately clamps it to the highest configured tier.
+                "expert": Tier.SPECIALIST,
             }.get(choice, Tier.WORKER)
-        if ceiling >= Tier.EXPERT and probs.get("expert", 0.0) >= self._expert_threshold:
-            target = Tier.EXPERT
-        elif (
-            ceiling >= Tier.SPECIALIST
-            and probs.get("specialist", 0.0) >= self._specialist_threshold
+        if ceiling >= Tier.SPECIALIST and (
+            choice == "expert" or probs.get("specialist", 0.0) >= self._specialist_threshold
         ):
             target = Tier.SPECIALIST
         return target

@@ -205,7 +205,6 @@ class RoutingSettings(BaseSettings):
 
     enabled: bool = Field(default=False, alias="STRIX_ROUTING_ENABLED")
     specialist_model: str | None = Field(default=None, alias="STRIX_ROUTING_SPECIALIST_MODEL")
-    expert_model: str | None = Field(default=None, alias="STRIX_ROUTING_EXPERT_MODEL")
     jev_enabled: bool = Field(default=False, alias="STRIX_ROUTING_JEV_ENABLED")
     jev_timeout_s: float = Field(
         default=5, alias="STRIX_ROUTING_JEV_TIMEOUT_S", gt=0, allow_inf_nan=False
@@ -213,17 +212,11 @@ class RoutingSettings(BaseSettings):
     specialist_threshold: float = Field(
         default=0.65, alias="STRIX_ROUTING_SPECIALIST_THRESHOLD", gt=0, le=1, allow_inf_nan=False
     )
-    expert_threshold: float = Field(
-        default=0.65, alias="STRIX_ROUTING_EXPERT_THRESHOLD", gt=0, le=1, allow_inf_nan=False
-    )
     specialist_cap: float = Field(
         default=0.25, alias="STRIX_ROUTING_SPECIALIST_CAP", ge=0, le=1, allow_inf_nan=False
     )
-    expert_cap: float = Field(
-        default=0.05, alias="STRIX_ROUTING_EXPERT_CAP", ge=0, le=1, allow_inf_nan=False
-    )
 
-    @field_validator("specialist_model", "expert_model", mode="before")
+    @field_validator("specialist_model", mode="before")
     @classmethod
     def _strip_model(cls, value: object) -> object:
         return (value.strip() or None) if isinstance(value, str) else value

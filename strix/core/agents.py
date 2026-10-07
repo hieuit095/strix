@@ -70,18 +70,7 @@ def _restore_routing_counts(snap: dict[str, Any]) -> dict[Tier, int] | None:
         routing = cast("dict[str, Any]", candidate)
         if routing["version"] != 1:
             raise RuntimeError("routing snapshot version is invalid")
-        candidate = routing.get("counts")
-        if not isinstance(candidate, dict) or set(cast("dict[str, Any]", candidate)) != {
-            tier.name.lower() for tier in Tier
-        }:
-            raise RuntimeError("routing snapshot counts keys are invalid")
-        raw = cast("dict[str, Any]", candidate)
-        counts = {}
-        for tier in Tier:
-            value = raw[tier.name.lower()]
-            if type(value) is not int or value < 0:
-                raise RuntimeError("routing snapshot count must be a nonnegative integer")
-            counts[tier] = value
+        counts = _deserialize_routing_counts(routing.get("counts"))
     else:
         for md in snap.get("metadata", {}).values():
             if "routing" not in md:
@@ -104,6 +93,30 @@ def _restore_routing_counts(snap: dict[str, Any]) -> dict[Tier, int] | None:
                 "routing counts reconstructed from saved child bindings; "
                 "admission history may be incomplete"
             )
+    return counts
+
+
+def _deserialize_routing_counts(candidate: object) -> dict[Tier, int]:
+    from strix.routing.types import Tier  # noqa: PLC0415
+
+    valid_keys = (
+        {tier.name.lower() for tier in Tier},
+        {"worker", "specialist", "expert"},  # legacy three-tier snapshots
+    )
+    if not isinstance(candidate, dict) or set(cast("dict[str, Any]", candidate)) not in valid_keys:
+        raise RuntimeError("routing snapshot counts keys are invalid")
+    raw = cast("dict[str, Any]", candidate)
+    counts: dict[Tier, int] = {}
+    for tier in Tier:
+        value = raw.get(tier.name.lower(), 0)
+        if type(value) is not int or value < 0:
+            raise RuntimeError("routing snapshot count must be a nonnegative integer")
+        if tier is Tier.SPECIALIST and "expert" in raw:
+            expert_count = raw["expert"]
+            if type(expert_count) is not int or expert_count < 0:
+                raise RuntimeError("routing snapshot count must be a nonnegative integer")
+            value += expert_count
+        counts[tier] = value
     return counts
 
 

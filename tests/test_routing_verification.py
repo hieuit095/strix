@@ -60,14 +60,12 @@ def router(
     client: SyntheticJev | None,
     *,
     specialist_cap: float = 1.0,
-    expert_cap: float = 1.0,
     available: frozenset[Tier] = frozenset(Tier),
 ) -> HybridModelRouter:
     return HybridModelRouter(
         client,
-        BudgetGovernor(specialist_cap, expert_cap),
+        BudgetGovernor(specialist_cap),
         specialist_threshold=0.65,
-        expert_threshold=0.65,
         available=available,
     )
 
@@ -90,28 +88,6 @@ async def test_specialist_requires_inclusive_threshold(probability: float, expec
     assert jev.calls == 1
 
 
-@pytest.mark.parametrize(
-    ("probability", "expected"), [(0.649, Tier.SPECIALIST), (0.65, Tier.EXPERT)]
-)
-@pytest.mark.asyncio
-async def test_expert_requires_inclusive_threshold(probability: float, expected: Tier) -> None:
-    jev = SyntheticJev({"worker": 0.0, "specialist": 1.0 - probability, "expert": probability})
-    decision = await router(jev).route(Envelope("complex exploit chain", ("rce",)))
-    assert decision.tier is expected
-
-
-@pytest.mark.asyncio
-async def test_expert_share_cap_steps_down_to_nearest_allowed_tier() -> None:
-    jev = SyntheticJev({"worker": 0.0, "specialist": 0.1, "expert": 0.9})
-    governor = BudgetGovernor(specialist_cap=1.0, expert_cap=0.05)
-    routed = HybridModelRouter(jev, governor, specialist_threshold=0.65, expert_threshold=0.65)
-    first = await routed.route(Envelope("first chain", ("rce",)))
-    second = await routed.route(Envelope("second chain", ("rce",)))
-    assert (first.tier, first.reason) == (Tier.EXPERT, "jev")
-    assert (second.tier, second.reason) == (Tier.SPECIALIST, "governor")
-    assert governor.counts == {Tier.WORKER: 0, Tier.SPECIALIST: 1, Tier.EXPERT: 1}
-
-
 @pytest.mark.asyncio
 async def test_specialist_share_cap_steps_down_to_worker() -> None:
     jev = SyntheticJev({"worker": 0.0, "specialist": 0.9, "expert": 0.1})
@@ -123,9 +99,7 @@ async def test_specialist_share_cap_steps_down_to_worker() -> None:
 
 @pytest.mark.asyncio
 async def test_worker_floor_is_never_downgraded_by_zero_caps() -> None:
-    decision = await router(None, specialist_cap=0.0, expert_cap=0.0).route(
-        Envelope("routine", ("xss",))
-    )
+    decision = await router(None, specialist_cap=0.0).route(Envelope("routine", ("xss",)))
     assert (decision.tier, decision.reason) == (Tier.WORKER, "rule")
 
 
@@ -145,20 +119,19 @@ async def test_jev_error_falls_back_to_rule_floor_with_reason(
     error: Exception,
 ) -> None:
     jev = SyntheticJev(error=error)
-    decision = await router(jev).route(Envelope("high impact", ("rce",)))
-    assert (decision.tier, decision.reason, jev.calls) == (Tier.SPECIALIST, "jev_error", 1)
+    decision = await router(jev).route(Envelope("uncertain logic", ("business_logic",)))
+    assert (decision.tier, decision.reason, jev.calls) == (Tier.WORKER, "jev_error", 1)
 
 
 @pytest.mark.asyncio
-async def test_unconfigured_expert_model_is_never_selected() -> None:
+async def test_removed_expert_choice_is_clamped_to_configured_specialist() -> None:
     settings = commandcode_settings()
     settings.routing.enabled = True
     settings.routing.specialist_model = "openai/xiaomi/mimo-v2.6-pro"
-    settings.routing.expert_model = None
     models = configured_models(settings, worker_model="openai/deepseek/deepseek-v4.1-flash")
-    jev = SyntheticJev({"worker": 0.0, "specialist": 0.0, "expert": 1.0})
+    jev = SyntheticJev({"worker": 0.0, "specialist": 0.0, "expert": 1.0}, choice="expert")
     decision = await router(jev, available=frozenset(models)).route(
-        Envelope("high impact", ("rce",))
+        Envelope("ambiguous", ("business_logic",))
     )
     assert models == {
         Tier.WORKER: "openai/deepseek/deepseek-v4.1-flash",
@@ -168,66 +141,54 @@ async def test_unconfigured_expert_model_is_never_selected() -> None:
     assert decision.tier in models
 
 
-def test_configured_route_models_match_worker_specialist_expert_design() -> None:
+def test_configured_route_models_match_two_model_design() -> None:
     settings = commandcode_settings()
     settings.routing.enabled = True
     settings.routing.specialist_model = "openai/xiaomi/mimo-v2.6-pro"
-    settings.routing.expert_model = "openai/gpt-6.1-sol"
     assert configured_models(settings, worker_model="openai/deepseek/deepseek-v4.1-flash") == {
         Tier.WORKER: "openai/deepseek/deepseek-v4.1-flash",
         Tier.SPECIALIST: "openai/xiaomi/mimo-v2.6-pro",
-        Tier.EXPERT: "openai/gpt-6.1-sol",
     }
 
 
 @pytest.mark.asyncio
-async def test_synthetic_route_flow_selects_worker_specialist_then_expert_model() -> None:
+async def test_expert_jev_choice_clamps_to_specialist_model() -> None:
     settings = commandcode_settings()
     settings.routing.enabled = True
     settings.routing.specialist_model = "openai/xiaomi/mimo-v2.6-pro"
-    settings.routing.expert_model = "openai/gpt-6.1-sol"
     models = configured_models(settings, worker_model="openai/deepseek/deepseek-v4.1-flash")
-    jev = SyntheticJev({"worker": 0.05, "specialist": 0.9, "expert": 0.05})
-    router_instance = router(jev)
-    observed = []
-    cases = (
-        (Envelope("routine", ("xss",)), Tier.WORKER),
-        (Envelope("uncertain logic", ("business_logic",)), Tier.SPECIALIST),
+    jev = SyntheticJev({"worker": 0.05, "specialist": 0.05, "expert": 0.9}, choice="expert")
+    decision = await router(jev, available=frozenset(models)).route(
+        Envelope("uncertain exploit", ("business_logic",))
     )
-    for envelope, expected_tier in cases:
-        decision = await router_instance.route(envelope)
-        observed.append((decision.tier, models[decision.tier]))
-        assert decision.tier is expected_tier
-    jev.probabilities = {"worker": 0.05, "specialist": 0.05, "expert": 0.9}
-    expert = await router_instance.route(Envelope("complex exploit", ("rce",)))
-    observed.append((expert.tier, models[expert.tier]))
-    assert expert.tier is Tier.EXPERT
-    assert observed == [
-        (Tier.WORKER, "openai/deepseek/deepseek-v4.1-flash"),
-        (Tier.SPECIALIST, "openai/xiaomi/mimo-v2.6-pro"),
-        (Tier.EXPERT, "openai/gpt-6.1-sol"),
-    ]
-    assert jev.calls == 2
+    assert decision.tier is Tier.SPECIALIST
+    assert decision.reason == "jev"
+    assert decision.jev_choice == "expert"
+    assert models[decision.tier] == "openai/xiaomi/mimo-v2.6-pro"
+    assert "expert" not in {tier.name.lower() for tier in models}
+    assert jev.calls == 1
 
 
 @pytest.mark.asyncio
-async def test_jev_choices_map_to_worker_specialist_and_expert_models() -> None:
+async def test_jev_choices_map_to_worker_and_specialist_models_with_expert_clamp() -> None:
     settings = commandcode_settings()
     models = configured_models(settings, worker_model="openai/deepseek/deepseek-v4.1-flash")
     cases = (
         ("worker", ("business_logic",), {"worker": 0.1, "specialist": 0.8, "expert": 0.1}),
         ("specialist", ("business_logic",), {"worker": 0.1, "specialist": 0.8, "expert": 0.1}),
-        ("expert", ("rce",), {"worker": 0.05, "specialist": 0.05, "expert": 0.9}),
+        ("expert", ("business_logic",), {"worker": 0.05, "specialist": 0.05, "expert": 0.9}),
     )
     expected_models = (
         (Tier.WORKER, "openai/deepseek/deepseek-v4.1-flash"),
         (Tier.SPECIALIST, "openai/xiaomi/mimo-v2.6-pro"),
-        (Tier.EXPERT, "openai/gpt-6.1-sol"),
+        (Tier.SPECIALIST, "openai/xiaomi/mimo-v2.6-pro"),
     )
     observed = []
     for (choice, skills, probabilities), (tier, model) in zip(cases, expected_models, strict=True):
         jev = SyntheticJev(probabilities, choice=choice)
-        decision = await router(jev).route(Envelope("synthetic", skills))
+        decision = await router(jev, available=frozenset(models)).route(
+            Envelope("synthetic", skills)
+        )
         observed.append((decision.jev_choice, decision.tier, models[decision.tier]))
         assert (decision.tier, models[decision.tier]) == (tier, model)
     assert [entry[0] for entry in observed] == ["worker", "specialist", "expert"]

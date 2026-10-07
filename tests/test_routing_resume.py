@@ -31,9 +31,9 @@ BINDING = {
 
 async def test_snapshot_preserves_routing_counts() -> None:
     source = AgentCoordinator()
-    source.routing_counts = {Tier.WORKER: 4, Tier.SPECIALIST: 2, Tier.EXPERT: 1}
+    source.routing_counts = {Tier.WORKER: 4, Tier.SPECIALIST: 2}
     snap = await source.snapshot()
-    assert snap["routing"] == {"version": 1, "counts": {"worker": 4, "specialist": 2, "expert": 1}}
+    assert snap["routing"] == {"version": 1, "counts": {"worker": 4, "specialist": 2}}
     restored = AgentCoordinator()
     await restored.restore(snap)
     assert restored.routing_counts == source.routing_counts
@@ -45,13 +45,13 @@ async def test_snapshot_preserves_routing_counts() -> None:
         None,
         {},
         {"version": 2, "counts": {}},
-        {"version": True, "counts": {"worker": 0, "specialist": 0, "expert": 0}},
+        {"version": True, "counts": {"worker": 0, "specialist": 0}},
         *[
-            {"version": 1, "counts": {"worker": value, "specialist": 0, "expert": 0}}
+            {"version": 1, "counts": {"worker": value, "specialist": 0}}
             for value in [-1, True, 1.5, "1"]
         ],
         {"version": 1, "counts": {"worker": 0}},
-        {"version": 1, "counts": {"worker": 0, "specialist": 0, "expert": 0, "unknown": 1}},
+        {"version": 1, "counts": {"worker": 0, "specialist": 0, "unknown": 1}},
     ],
 )
 async def test_malformed_counts_rejected(routing: Any) -> None:
@@ -61,10 +61,19 @@ async def test_malformed_counts_rejected(routing: Any) -> None:
 
 async def test_counts_share_governor_reference() -> None:
     coordinator = AgentCoordinator()
-    governor = BudgetGovernor(0.2, 0.1)
+    governor = BudgetGovernor(0.2)
     coordinator.routing_counts = governor.counts
     governor.admit(Tier.SPECIALIST, floor=Tier.SPECIALIST)
     assert (await coordinator.snapshot())["routing"]["counts"]["specialist"] == 1
+
+
+async def test_legacy_expert_count_is_preserved_in_specialist_total() -> None:
+    coordinator = AgentCoordinator()
+    await coordinator.restore(
+        {"routing": {"version": 1, "counts": {"worker": 4, "specialist": 2, "expert": 3}}}
+    )
+    assert coordinator.routing_counts == {Tier.WORKER: 4, Tier.SPECIALIST: 5}
+    assert (await coordinator.snapshot())["routing"]["counts"] == {"worker": 4, "specialist": 5}
 
 
 async def test_disabled_snapshot_is_legacy() -> None:
@@ -86,7 +95,7 @@ async def test_legacy_bindings_reconstruct_all_children(caplog: pytest.LogCaptur
             "statuses": {"complete": "completed", "failed": "failed", "legacy": "running"},
         }
     )
-    assert coordinator.routing_counts == {Tier.WORKER: 0, Tier.SPECIALIST: 2, Tier.EXPERT: 0}
+    assert coordinator.routing_counts == {Tier.WORKER: 0, Tier.SPECIALIST: 2}
     assert "reconstruct" in caplog.text
 
 
@@ -182,7 +191,7 @@ async def test_respawn_preserves_model_provider_counts_and_legacy_identity(
         "specialist", "specialist", "root", task="synthetic", skills=["rce"], routing=BINDING
     )
     await coordinator.register("legacy", "legacy", "root")
-    coordinator.routing_counts = {Tier.WORKER: 0, Tier.SPECIALIST: 1, Tier.EXPERT: 1}
+    coordinator.routing_counts = {Tier.WORKER: 0, Tier.SPECIALIST: 2}
     before = copy.deepcopy(coordinator.routing_counts)
     captured: list[dict[str, Any]] = []
 
@@ -222,7 +231,7 @@ async def test_runner_resume_reuses_counts_without_rerouting_old_children(
     source = AgentCoordinator()
     await source.register("root", "root", None)
     await source.register("old", "old", "root", routing=BINDING)
-    source.routing_counts = {Tier.WORKER: 0, Tier.SPECIALIST: 1, Tier.EXPERT: 1}
+    source.routing_counts = {Tier.WORKER: 0, Tier.SPECIALIST: 2}
     (tmp_path / "agents.json").write_text(json.dumps(await source.snapshot()))
     (tmp_path / "agents.db").touch()
     respawns: list[dict[str, Any]] = []
@@ -236,10 +245,17 @@ async def test_runner_resume_reuses_counts_without_rerouting_old_children(
         monkeypatch, probs={"worker": 0.05, "specialist": 0.05, "expert": 0.9}
     )
     restored = AgentCoordinator()
-    result = await run_spawn(monkeypatch, tmp_path, enabled=True, jev=True, coordinator=restored)
+    result = await run_spawn(
+        monkeypatch,
+        tmp_path,
+        enabled=True,
+        jev=True,
+        skills=["business_logic"],
+        coordinator=restored,
+    )
     assert len(respawns) == 1 and len(requests) == 1
-    assert result["children"][0]["routing"]["tier"] == "specialist"
-    assert restored.routing_counts == {Tier.WORKER: 0, Tier.SPECIALIST: 2, Tier.EXPERT: 1}
+    assert result["children"][0]["routing"]["tier"] == "worker"
+    assert restored.routing_counts == {Tier.WORKER: 1, Tier.SPECIALIST: 2}
     assert (
         json.loads((tmp_path / "agents.json").read_text())["routing"]["counts"]["specialist"] == 2
     )
