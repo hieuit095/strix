@@ -1,6 +1,8 @@
 # Child model routing qua CommandCode
 
-Trạng thái cập nhật 06/10/2026 21:02 ICT: regression offline và scan QUICK thật đã chứng minh JEV tham gia luồng spawn — bốn JEV answers khớp bốn `reason=jev`, sáu child route/model bindings khớp. JEV chọn Specialist/MiMo ba lần và một Specialist choice ở dưới threshold giữ Worker/DeepSeek. Live Expert/GPT, parity, PoC, routed resume và billing vẫn chưa xác minh. Router chọn model child một lần tại spawn. Root giữ model resolved, kể cả override từ CLI. Tools, prompts, skills, scan modes, context/history, max turns và budget policy giữ nguyên.
+**Owner scope update — 2026-10-07:** runtime supports exactly two child tiers: Worker → `openai/deepseek/deepseek-v4.1-flash` and Specialist → `openai/xiaomi/mimo-v2.6-pro`. There is no Expert tier, GPT-6.1 model setting, threshold, cap, or model-map entry. The JEV provider contract still allows `worker|specialist|expert`; a returned `expert` answer clamps to Specialist, the highest available tier. GPT-6.1 live gates are **NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo)**. The historical 403 remains historical evidence only.
+
+Latest live evidence and the exact two-model reproduction are in [verification.md](verification.md). Router chọn model child một lần tại spawn. Root giữ model resolved, kể cả override từ CLI. Tools, prompts, skills, scan modes, context/history, max turns và budget policy giữ nguyên.
 
 ## Cấu hình
 
@@ -10,15 +12,12 @@ Python 3.12+, `uv`, dependencies từ `make dev-install`; chạy scan cần Dock
 |---|---|---|
 | `STRIX_ROUTING_ENABLED` | `false` | Opt-in |
 | `STRIX_ROUTING_SPECIALIST_MODEL` | Không có | Bắt buộc khi enabled; strip rỗng thành None |
-| `STRIX_ROUTING_EXPERT_MODEL` | Không có | Optional; không chọn tier thiếu |
 | `STRIX_ROUTING_JEV_ENABLED` | `false` | Opt-in metadata, không ZDR |
 | `STRIX_ROUTING_JEV_TIMEOUT_S` | `5` | Hữu hạn, >0 giây |
 | `STRIX_ROUTING_SPECIALIST_THRESHOLD` | `0.65` | Hữu hạn, 0<value<=1 |
-| `STRIX_ROUTING_EXPERT_THRESHOLD` | `0.65` | Hữu hạn, 0<value<=1 |
 | `STRIX_ROUTING_SPECIALIST_CAP` | `0.25` | Hữu hạn, 0<=value<=1 |
-| `STRIX_ROUTING_EXPERT_CAP` | `0.05` | Hữu hạn, 0<=value<=1 |
 
-Các trường tương ứng trong JSON settings nằm dưới `routing`: `enabled`, `specialist_model`, `expert_model`, `jev_enabled`, `jev_timeout_s`, `specialist_threshold`, `expert_threshold`, `specialist_cap`, `expert_cap`.
+Các trường tương ứng trong JSON settings nằm dưới `routing`: `enabled`, `specialist_model`, `jev_enabled`, `jev_timeout_s`, `specialist_threshold`, `specialist_cap`. Không còn trường/env alias cho Expert.
 
 Floor-only là cấu hình khởi đầu; key được cấp qua environment, không ghi literal vào file/history:
 
@@ -29,17 +28,16 @@ export STRIX_API_TYPE="chat_completions"
 export STRIX_LLM="openai/deepseek/deepseek-v4.1-flash"
 export STRIX_ROUTING_ENABLED=true
 export STRIX_ROUTING_SPECIALIST_MODEL="openai/xiaomi/mimo-v2.6-pro"
-export STRIX_ROUTING_EXPERT_MODEL="openai/gpt-6.1-sol"
 export STRIX_ROUTING_JEV_ENABLED=true
 # Chỉ bật JEV nếu policy metadata không-ZDR đã được xác nhận/cho phép:
 uv run strix -n -t "$AUTHORIZED_FIXTURE_TARGET" --scan-mode quick --max-budget 5
 ```
 
-Prefix `openai/` chọn native SDK; wire IDs lần lượt `deepseek/deepseek-v4.1-flash`, `xiaomi/mimo-v2.6-pro`, `gpt-6.1-sol`. Snapshot catalog/giá trong [plan](../../strix_hybrid_router_plan.md) ngày 05/10/2026 cần xác minh lại tại [catalog](https://api.commandcode.ai/provider/v1/models), [Provider API](https://commandcode.ai/docs/provider) và [Pricing & Limits](https://commandcode.ai/docs/resources/pricing-limits) trước live rollout. Startup yêu cầu cùng CommandCode Chat Completions, prefix hợp lệ và flags tool schema tương thích; không tự thay model hoặc bỏ reasoning/tool/cache settings để chạy được.
+Prefix `openai/` chọn native SDK; wire IDs là `deepseek/deepseek-v4.1-flash` và `xiaomi/mimo-v2.6-pro`. Snapshot catalog/giá trong [plan](../../strix_hybrid_router_plan.md) ngày 05/10/2026 cần xác minh lại tại [catalog](https://api.commandcode.ai/provider/v1/models), [Provider API](https://commandcode.ai/docs/provider) và [Pricing & Limits](https://commandcode.ai/docs/resources/pricing-limits) trước live rollout. Startup yêu cầu cùng CommandCode Chat Completions, prefix hợp lệ và flags tool schema tương thích; không tự thay model hoặc bỏ reasoning/tool/cache settings để chạy được.
 
 ## Quyết định và dữ liệu JEV
 
-High-impact skills hoặc severity high/critical yêu cầu tối thiểu specialist. Expert optional. JEV tắt thì dùng hard floor; plain task dùng worker và không gọi JEV. Soft caps là tỷ lệ **quyết định**, không phải tỷ lệ tiền; cap=0 cấm upgrade optional, hard floor vẫn ưu tiên. Đầu scan có allowance một upgrade khi cap>0.
+High-impact skills hoặc severity high/critical yêu cầu Specialist. JEV tắt thì dùng hard floor; plain task dùng Worker và không gọi JEV. Khi còn lựa chọn Worker/Specialist, JEV quyết định; `expert` answer được clamp thành Specialist. Specialist cap là tỷ lệ **quyết định**, không phải tỷ lệ tiền; cap=0 cấm upgrade optional, hard floor vẫn ưu tiên.
 
 Sau khi policy cho phép metadata không ZDR, bật `STRIX_ROUTING_JEV_ENABLED=true`. Adapter gọi `/systemone`, model `typesafe/jev`, question choice `route_tier`. Chỉ gửi policy skill labels, số attempts nguyên không âm, severity enum/null và task length bucket. Không gửi raw task, URL, history hoặc credential trong state. [ZDR policy](https://commandcode.ai/docs/resources/zdr): header `x-cmd-zdr: 1` cùng JEV bị từ chối tại startup; không tự gỡ header. Policy mandatory ZDR cần giữ JEV off.
 
@@ -95,4 +93,8 @@ The earlier no-JEV scan was caused by namespaced skill IDs not matching bare pol
 
 ## Current live status — 2026-10-07 (ICT)
 
-Earlier paragraphs in this file are dated historical checkpoints. Current evidence shows that the owner-authorized non-ZDR `typesafe/jev` request worked (HTTP 200, `route_tier`, specialist, usage 410/42), the strengthened one-request envelope test passed live, scan `9145` exercised JEV in real child routing, and the controlled three-run comparison and routed resume are documented in [verification.md](verification.md). The most recent resume restored the existing child’s DeepSeek binding and counters, then routed new admissions separately, including a new JEV Specialist choice. The JEV-on comparison scan `3d42` completed but had incomplete coverage (one failed Recon agent); do not call it quality parity or clean. GPT live use remains denied by HTTP 403 `MODEL_NOT_IN_PLAN`, independent ground-truth/PoC is unavailable, and actual billing remains unread. Task 08 records those gates and defers release.
+Earlier paragraphs in this file are dated historical checkpoints. Current JEV non-ZDR permission, live envelope, scan participation, comparison, and resume evidence are in [verification.md](verification.md). The JEV-on comparison scan `3d42` completed but had incomplete coverage (one failed Recon agent); do not call it quality parity or clean. Independent ground-truth/PoC is unavailable and actual billing remains unread. GPT-specific gates are **NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo)**; the old 403 is a historical result, not a blocker. Task 08 records remaining independent gates and defers release.
+
+## Two-model owner scope — 2026-10-07
+
+The runtime has only Worker/DeepSeek and Specialist/MiMo. There is no Expert routing tier or GPT model setting. The JEV request contract remains model `typesafe/jev` and question `route_tier`; provider choices remain three-label for protocol compatibility. When JEV returns `expert`, the router clamps it to Specialist and binds MiMo. Current tests and the bounded live QUICK verification are listed in [verification.md](verification.md); earlier three-model/GPT references in dated evidence above are historical only.

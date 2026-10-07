@@ -1,0 +1,108 @@
+{
+  "command": "timeout <seconds>s python /tmp/strix-hybrid-rate-runner.py --run-scan -n -t <local-target> --scan-mode quick --max-budget 5 (STRIX_ROUTING_JEV_ENABLED=true)",
+  "coverage": {
+    "findings_filed": 1,
+    "gaps": 13,
+    "outcomes": {
+      "needs_follow_up": 11,
+      "no_issue_found": 1,
+      "reported": 2,
+      "ruled_out": 4
+    },
+    "surfaces_reviewed": 18
+  },
+  "findings_count": 1,
+  "jev_answers": [
+    {
+      "choice": "worker",
+      "input_tokens": 408,
+      "output_tokens": 41
+    }
+  ],
+  "jev_choice_distribution": {
+    "worker": 1
+  },
+  "jev_failures": [],
+  "jev_path": "pass",
+  "llm_usage": {
+    "cost": 0.4944239628,
+    "input_tokens": 15206955,
+    "output_tokens": 192628,
+    "requests": 144,
+    "total_tokens": 15399583
+  },
+  "models": {
+    "specialist": "openai/xiaomi/mimo-v2.6-pro",
+    "worker": "openai/deepseek/deepseek-v4.1-flash"
+  },
+  "overall": "pass",
+  "persisted_bindings": [
+    {
+      "api_base": "https://api.commandcode.ai/provider/v1",
+      "api_type": "chat_completions",
+      "model": "openai/deepseek/deepseek-v4.1-flash",
+      "tier": "worker",
+      "version": 1
+    },
+    {
+      "api_base": "https://api.commandcode.ai/provider/v1",
+      "api_type": "chat_completions",
+      "model": "openai/xiaomi/mimo-v2.6-pro",
+      "tier": "specialist",
+      "version": 1
+    },
+    {
+      "api_base": "https://api.commandcode.ai/provider/v1",
+      "api_type": "chat_completions",
+      "model": "openai/deepseek/deepseek-v4.1-flash",
+      "tier": "worker",
+      "version": 1
+    },
+    {
+      "api_base": "https://api.commandcode.ai/provider/v1",
+      "api_type": "chat_completions",
+      "model": "openai/deepseek/deepseek-v4.1-flash",
+      "tier": "worker",
+      "version": 1
+    }
+  ],
+  "recorded_at": "2026-10-07T00:34:20.210134+00:00",
+  "routing_decisions": [
+    {
+      "jev_choice": null,
+      "model": "openai/deepseek/deepseek-v4.1-flash",
+      "reason": "rule",
+      "tier": "worker"
+    },
+    {
+      "jev_choice": null,
+      "model": "openai/xiaomi/mimo-v2.6-pro",
+      "reason": "rule",
+      "tier": "specialist"
+    },
+    {
+      "jev_choice": "worker",
+      "model": "openai/deepseek/deepseek-v4.1-flash",
+      "reason": "jev",
+      "tier": "worker"
+    },
+    {
+      "jev_choice": null,
+      "model": "openai/deepseek/deepseek-v4.1-flash",
+      "reason": "rule",
+      "tier": "worker"
+    }
+  ],
+  "routing_policy": {
+    "specialist_cap": 0.25,
+    "specialist_threshold": 0.65
+  },
+  "run_name": "host-docker-internal-5173_da7d",
+  "scan_exit_code": 2,
+  "scan_status": "completed",
+  "target_url": "http://host.docker.internal:5173",
+  "tier_distribution": {
+    "specialist": 1,
+    "worker": 3
+  }
+}

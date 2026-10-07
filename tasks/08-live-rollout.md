@@ -29,10 +29,10 @@ Không skip ở module import trước khi test runner biết số case; không 
 ## Gate 1 — Account, policy, price và target
 
 - [x] Người dùng cho phép live inference/scan trên target `/home/hieuit095/h-th-ng-qu-n-l-btxh-nct`; target commit và phạm vi URL-only được ghi dưới đây. Không sửa target.
-- [x] Key mới xác thực được cho DeepSeek inference; owner verified HTTP 200. A resumed QUICK scan completed and a second bounded routing smoke completed; see the dated records below. GPT-6.1 entitlement previously returned HTTP 403 and JEV is absent; actual dashboard billing remains unverified.
+- [x] Key mới xác thực được cho DeepSeek/MiMo inference; owner verified HTTP 200 and this task’s bounded two-model QUICK scan completed; see the dated records below. **NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo)** removes the GPT-6.1 target; the prior 403 is historical and no longer a rollout blocker. Actual dashboard billing remains unverified.
 - [x] Xác nhận policy JEV metadata không ZDR: owner-provided live `POST /systemone`, `model=typesafe/jev`, question `route_tier` returned HTTP 200, `choice=specialist`, usage 410/42 on 2026-10-06 18:06 ICT. This is explicit live permission proof, distinct from catalogue presence; see dated evidence below and `docs/routing/verification.md`.
-- [x] GET `https://api.commandcode.ai/provider/v1/models` bằng httpx với timeout; kiểm model IDs plan §3.2 và supported_endpoints. Nếu thay đổi, cập nhật test inputs/docs có ngày, không silently substitute model. Kết quả live 06/10/2026 ghi ở biên bản cuối file.
-- [x] Kiểm pricing resolver cho exact Strix IDs và JEV: gọi `resolve_litellm_model`/`LLMUsageLedger.record` trên Usage tổng hợp input=1000/output=100. Báo giá unknown nếu resolve None hoặc estimate==0 với rate trả phí; không dùng “$0” để mở gate budget.
+- [x] GET `https://api.commandcode.ai/provider/v1/models` bằng httpx với timeout; kiểm Worker/Specialist model IDs plan §3.2 và supported_endpoints. Nếu thay đổi, cập nhật test inputs/docs có ngày, không silently substitute model. Kết quả live 06/10/2026 ghi ở biên bản cuối file. GPT target gate is N/A by the 2026-10-07 owner scope decision.
+- [x] Kiểm pricing resolver cho exact Worker/Specialist Strix IDs và JEV: gọi `resolve_litellm_model`/`LLMUsageLedger.record` trên Usage tổng hợp input=1000/output=100. Báo giá unknown nếu resolve None hoặc estimate==0 với rate trả phí; không dùng “$0” để mở gate budget. GPT estimator/model is out of scope under the 2026-10-07 owner decision.
 - [x] Khi giá chưa có: chỉ dùng `litellm.register_model` có sẵn và reviewed rates trong **process chạy test/scan**, clear resolver cache sau register. Không sửa pricing engine/ledger. Mapping phải gồm input_cost_per_token=rate_per_million/1e6, output_cost_per_token, cache_read_input_token_cost và litellm_provider đúng route estimator; chạy lại Usage estimate test. Đăng ký không ghi đè capability flags/reasoning/tool support của existing model entry: merge entry cũ trước override các price fields. Đã xác minh bằng preflight và thực hiện trong tiến trình scan; chưa xác minh charge thực tế.
 - [x] Nếu phải inject rates để scan CLI dùng được, dùng script cục bộ ngoài tracked production: load reviewed JSON, register_model, cache_clear, set sys.argv như CLI rồi gọi `strix.interface.main.main()` **trong cùng process**. Không register trong process A rồi launch subprocess B rồi cho rằng B đã nhận giá. Script/JSON operator giữ local, không SDK/config field mới. Đã dùng `/tmp/strix-hybrid-rate-runner.py` cho cả run interrupted lẫn hai run hoàn tất dưới đây.
 - [x] Giá tham khảo plan là snapshot ngày 05/10/2026; bảng chính thức được xem lại ngày 06/10/2026 trước dùng. Actual charge vẫn chưa xác minh, nên billing/live-budget gate chưa đạt; giữ offline deliverable.
@@ -42,12 +42,12 @@ Không skip ở module import trước khi test runner biết số case; không 
 
 Đây là kiểm chứng tích hợp; không bắt dịch vụ thật thất bại để “làm TDD”. Parser/helper behavior đã có RED/GREEN offline ở 02/04. Mỗi live failure là gate thực phải sửa có regression offline trước gọi lại.
 
-- [x] Parametrize **3 model × 2 modes** (stream/nonstream), theo Config thật chung CommandCode. Dùng StrixProvider và make_model_settings, không HTTP chat client riêng bỏ qua Strix wrappers.
-- [blocked by external gate: live text contract passed for DeepSeek/MiMo; GPT-6.1 contract cases returned HTTP 403 `MODEL_NOT_IN_PLAN`, so the requested three-model matrix is incomplete. Exact bounded matrix results are recorded below.]
+- [x] Parametrize **2 configured model × 2 modes** (stream/nonstream), theo Config thật chung CommandCode. Dùng StrixProvider và make_model_settings, không HTTP chat client riêng bỏ qua Strix wrappers. The third GPT target from the original task design is N/A under the 2026-10-07 owner decision.
+- [NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo); the requested text contract now covers only the configured Worker and Specialist targets. The earlier GPT-6.1 403 is historical and does not block this scope.]
 - [x] Tool contract sử dụng `build_strix_agent(is_root=False, skills=['rce'], scan_mode='quick', chat_completions_tools=True, strict_tool_schemas=<validated flag>, extra_tools=[echo])`. `echo` là test-only FunctionTool qua decorator sẵn có, argument value:str, return value; không production tool mới.
 - [x] Dùng toàn bộ tool declarations của agent thực, không lấy `[echo]` thay toolset; sandbox/filesystem/shell capabilities cần SDK sandbox tool materialization giống runner. Đọc test_agent_factory_tool_arguments.py/runner SandboxRunConfig. Nếu chưa materialize đầy đủ, gate full-tool contract vẫn chưa đạt; không đánh dấu chỉ dựa echo-alone.
-- [blocked by external gate: bounded full-tool/echo contract passed for DeepSeek/MiMo only; GPT-6.1 full-tool cases returned HTTP 403 `MODEL_NOT_IN_PLAN`. No production tool was executed. See the exact matrix record below.]
-- [blocked by external gate: streaming/nonstream response and usage contracts passed for DeepSeek/MiMo; GPT-6.1 cases are blocked by HTTP 403 `MODEL_NOT_IN_PLAN`; the full three-model acceptance matrix remains incomplete.]
+- [NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo); no GPT-6.1 full-tool contract is required. The two configured targets retain the previously passed bounded full-tool/streaming contract; no production tool was executed.]
+- [NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo); streaming/nonstream response and usage coverage is limited to the two configured targets. The prior GPT-6.1 403 is historical.]
 - [x] One live synthetic JEV envelope passed: fixed `typesafe/jev` + `route_tier` choice schema, finite worker/specialist/expert distribution, usage once, allowlist-only state, and secret-free body/log assertions. Exact opt-in command/result is recorded in the 2026-10-07 evidence section and `docs/routing/verification.md`.
 - [x] Live opt-in verification is reproducible and genuinely exercised: envelope test exit 0 (1 passed) plus actual JEV-participating QUICK scan `host-docker-internal-5173_9145` verifier exit 0, with its own JEV answers and matched route bindings. Commands/artifacts are linked below and in `docs/routing/verification.md`.
 
@@ -75,7 +75,7 @@ uv run strix -n -t "$AUTHORIZED_FIXTURE_TARGET" --scan-mode quick --max-budget 5
 
 ## Chu trình C — Rollout/rollback
 
-- [blocked by external gate: candidate rollout is deferred because the GPT live entitlement/full three-model contract, independent ground-truth/PoC parity, and actual-charge reconciliation remain incomplete; no merge/deploy authorization was given. OFF → internal floor-only → JEV is documented but not staged/released.]
+- [blocked by external gate: candidate rollout is deferred because independent ground-truth/PoC parity and actual-charge reconciliation remain incomplete; no merge/deploy authorization was given. GPT-6.1 gates are NOT APPLICABLE under the owner’s 2026-10-07 two-model scope. OFF → internal floor-only → JEV is documented but not staged/released.]
 - [x] Rollback scan mới `STRIX_ROUTING_ENABLED=false`; không dùng flag để đổi model session scan cũ. Resume cần saved bindings/cùng gateway, có hướng dẫn README.
 - [x] Review final diff không thêm features để hỗ trợ rollout; source of truth vẫn plan.
 
@@ -88,7 +88,7 @@ uv run strix -n -t "$AUTHORIZED_FIXTURE_TARGET" --scan-mode quick --max-budget 5
 
 ## Biên bản hoàn thành
 
-**Final status:** JEV policy/envelope/scan participation, three-run measured comparison, and real routed resume are evidenced below. Full quality parity, live GPT entitlement, and actual billing remain blocked by explicit external prerequisites; no overall release claim is made.
+**Final status before 2026-10-07 scope change:** JEV policy/envelope/scan participation, three-run measured comparison, and real routed resume are evidenced below. Full quality parity and actual billing remain blocked by explicit external prerequisites; GPT entitlement is no longer applicable under the owner’s two-model decision. No overall release claim is made.
 
 Files: tests/test_routing_live.py, docs/routing/README.md, biên bản 07/08 và tasks/README status. Không production feature/dependency/module mới ở 08. Hai operator-local files `/tmp/strix-hybrid-reviewed-rates.json` và `/tmp/strix-hybrid-rate-runner.py` không tracked, không tự inference/scan khi chạy audit.
 
@@ -297,7 +297,32 @@ Across all nine persisted `strix_runs/*/run.json` records after the resume compl
 
 ### Explicit remaining gates and release decision
 
-- **BLOCKED by external gate — Expert/GPT live:** four prior GPT-6.1 contract cases returned HTTP 403 `MODEL_NOT_IN_PLAN`; the completed JEV scan had no Expert choice (all seven choices were Worker or Specialist). Offline tier/model mapping passes. Exact attempt: `STRIX_ROUTING_LIVE_TESTS=1 UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 180s uv run --offline pytest tests/test_routing_live.py -k 'live_text_contract or live_full_tool_contract' -q` → exit **1**, **8 passed/4 GPT cases failed** with HTTP 403 `MODEL_NOT_IN_PLAN`; no repeat/purchase. All seven JEV choices in the current full scan were Worker/Specialist, so no Expert route was selected. Offline model mapping passes. Minimal prerequisite: owner enables GPT-6.1 entitlement or supplies an entitled model and authorizes a bounded live Expert test.
+- **NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo).** GPT-6.1/Expert live contract is removed from the target architecture. The prior four HTTP 403 `MODEL_NOT_IN_PLAN` responses remain historical evidence and are not an open prerequisite.
+
+### Owner scope decision and two-model verification — 2026-10-07
+
+Owner changed the routing target to exactly Worker → `openai/deepseek/deepseek-v4.1-flash` and Specialist → `openai/xiaomi/mimo-v2.6-pro`. GPT-6.1/Expert-specific contract and entitlement gates above are **NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo)**; the recorded prior 403 is historical only. Runtime `Tier`, settings, governor, route map, and verifier now contain only the two target tiers. The `typesafe/jev` provider protocol still returns `worker|specialist|expert`; `expert` is clamped to Specialist and covered by the offline RED/GREEN regression.
+
+The bounded live verification used the owner-authorized read-only source repository at commit `6c0fc01e7f969bbf75ef663606aa4a4d7c747620`, served from isolated snapshot `/tmp/strix-live-target-6c0fc01` at `http://host.docker.internal:5173`. The owner repo remained untouched (its only untracked item was the pre-existing `scripts/optimize_system.sh`). Vite returned HTTP 200 but logged unresolved `jsr:@supabase/functions-js/edge-runtime.d.ts` imports from Supabase Edge Functions; treat coverage as partial.
+
+Secret-free reproduction command (credential values remain in the external mode-0600 file; shell tracing disabled):
+
+```bash
+set +x
+set -a; . /home/hieuit095/.strix-live.env; set +a
+trap 'unset LLM_API_KEY CMD_API_KEY COMMAND_CODE_API_BASE LLM_API_BASE STRIX_LLM STRIX_API_TYPE STRIX_REASONING_EFFORT LLM_TIMEOUT STRIX_ROUTING_LIVE_TESTS STRIX_ROUTING_ENABLED STRIX_ROUTING_SPECIALIST_MODEL STRIX_ROUTING_EXPERT_MODEL STRIX_ROUTING_JEV_ENABLED STRIX_ROUTING_JEV_POLICY_VERIFIED STRIX_ROUTING_SPECIALIST_THRESHOLD STRIX_ROUTING_SPECIALIST_CAP' EXIT
+unset STRIX_ROUTING_EXPERT_MODEL
+export STRIX_ROUTING_ENABLED=true STRIX_ROUTING_SPECIALIST_MODEL='openai/xiaomi/mimo-v2.6-pro'
+export STRIX_ROUTING_JEV_ENABLED=true STRIX_ROUTING_JEV_POLICY_VERIFIED=1
+export STRIX_ROUTING_SPECIALIST_THRESHOLD=0.65 STRIX_ROUTING_SPECIALIST_CAP=0.25
+UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 10800s uv run --offline python scripts/verify_hybrid_routing.py --target http://host.docker.internal:5173 --timeout-seconds 10800
+```
+
+Verifier exit **0**. Its offline embedded routing suite exited **0** (**86 passed**); target probe was HTTP **200**. Underlying Strix command was QUICK, `-n`, `--max-budget 5`, and exited **2** because a finding/report was produced; persisted `run.json.status=completed`. `routing-verification.json` records `overall=pass`: 4/4 child route/model decisions matched 4/4 persisted bindings; tiers were Worker **3** / Specialist **1**; one real JEV answer was `worker` (**408 input / 41 output tokens**) and its scan decision was `reason=jev`, bound to `openai/deepseek/deepseek-v4.1-flash`; JEV failures **0**. No Expert tier/model/route appeared. Findings count **1**; coverage recorded **18 surfaces**, **13 gaps**, outcomes reported 2 / no-issue-found 1 / ruled-out 4 / needs-follow-up 11. Usage: **144 requests**, 15,206,955 input + 192,628 output = **15,399,583 tokens**, estimated **USD 0.4944239628** of USD 5; actual account charge remains unread. This verifies two-model routing and live JEV participation, not full target coverage, quality parity, or billing.
+
+TDD evidence: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_verification.py::test_configured_route_models_match_two_model_design tests/test_routing_verification.py::test_expert_jev_choice_clamps_to_specialist_model -q` exited **1** with **2 expected failures** against the old Expert/GPT map and unclamped Expert choice. After the implementation, `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True uv run --offline pytest tests/test_routing_*.py -q` exited **0** with **229 passed, 10 skipped**. Final current-source suite: `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 900s uv run --offline pytest -q -o faulthandler_timeout=30` exited **0**, **2567 passed, 10 skipped, 3 xfailed, 106 warnings**. Final `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 300s make check-all` exited **0** (Ruff, mypy 141 files, Pyright 0 errors, Bandit clean).
+
+Evidence: tracked secret-free [`two-model-quick-20261007.json`](../docs/routing/evidence/two-model-quick-20261007.json), copied from the genuine ignored runtime artifact `strix_runs/host-docker-internal-5173_da7d/routing-verification.json`; it contains tier/model/reason/choice and usage only. The original run/report artifacts remain under that run directory. No request body or credential was retained.
 - **BLOCKED by external gate — quality/PoC parity:** need owner-supplied expected findings/roles/reproduction and PoC truth set for the authorized target; no inference can manufacture independent ground truth.
 - **BLOCKED by external gate — actual charge:** need read-only CommandCode billing statement/dashboard access; rate-based USD estimates do not prove the charge.
 - **BLOCKED/deferred — candidate release:** no merge/deploy authorization, and the external gates above remain open. Rollback is available by disabling routing for new scans; existing scans require their saved model bindings and same gateway.

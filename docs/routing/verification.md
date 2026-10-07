@@ -1,5 +1,7 @@
 # Xác minh Hybrid Router
 
+**Scope hiện hành — owner decision 2026-10-07:** router có đúng hai target: Worker `openai/deepseek/deepseek-v4.1-flash` và Specialist `openai/xiaomi/mimo-v2.6-pro`. Không có Expert tier hoặc GPT-6.1 setting/model mapping. Provider protocol `typesafe/jev` vẫn chấp nhận `worker|specialist|expert`; `expert` answer được clamp thành Specialist (top available tier). GPT-specific gates are **NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo)**. Prior HTTP 403s are historical only.
+
 File `scripts/verify_hybrid_routing.py` là một lệnh tái chạy gồm hai phần: chạy kiểm thử router/governor/JEV offline, sau đó chạy một QUICK scan thật với ngân sách tối đa USD 5 và đối chiếu log quyết định với model binding đã lưu. Script yêu cầu app local ở cổng 5173, key trong môi trường được bảo vệ, và rate runner operator-local để ước tính ngân sách trong cùng process với Strix.
 
 ## Chạy lại
@@ -11,26 +13,26 @@ set +x
 set -a
 . /home/hieuit095/.strix-live.env
 set +a
-trap 'unset LLM_API_KEY CMD_API_KEY COMMAND_CODE_API_BASE LLM_API_BASE STRIX_LLM STRIX_API_TYPE STRIX_REASONING_EFFORT LLM_TIMEOUT STRIX_ROUTING_LIVE_TESTS STRIX_ROUTING_ENABLED STRIX_ROUTING_SPECIALIST_MODEL STRIX_ROUTING_EXPERT_MODEL STRIX_ROUTING_JEV_ENABLED STRIX_ROUTING_JEV_POLICY_VERIFIED STRIX_ROUTING_SPECIALIST_THRESHOLD STRIX_ROUTING_EXPERT_THRESHOLD STRIX_ROUTING_SPECIALIST_CAP STRIX_ROUTING_EXPERT_CAP' EXIT
+trap 'unset LLM_API_KEY CMD_API_KEY COMMAND_CODE_API_BASE LLM_API_BASE STRIX_LLM STRIX_API_TYPE STRIX_REASONING_EFFORT LLM_TIMEOUT STRIX_ROUTING_LIVE_TESTS STRIX_ROUTING_ENABLED STRIX_ROUTING_SPECIALIST_MODEL STRIX_ROUTING_JEV_ENABLED STRIX_ROUTING_JEV_POLICY_VERIFIED STRIX_ROUTING_SPECIALIST_THRESHOLD STRIX_ROUTING_SPECIALIST_CAP' EXIT
+unset STRIX_ROUTING_EXPERT_MODEL
 export STRIX_ROUTING_ENABLED=true
 export STRIX_ROUTING_SPECIALIST_MODEL='openai/xiaomi/mimo-v2.6-pro'
-export STRIX_ROUTING_EXPERT_MODEL='openai/gpt-6.1-sol'
 export STRIX_ROUTING_JEV_ENABLED=true
 export STRIX_ROUTING_JEV_POLICY_VERIFIED=1
-export STRIX_ROUTING_SPECIALIST_THRESHOLD=0.65 STRIX_ROUTING_EXPERT_THRESHOLD=0.65
-export STRIX_ROUTING_SPECIALIST_CAP=0.25 STRIX_ROUTING_EXPERT_CAP=0.05
+export STRIX_ROUTING_SPECIALIST_THRESHOLD=0.65
+export STRIX_ROUTING_SPECIALIST_CAP=0.25
 UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True \
   uv run --offline python scripts/verify_hybrid_routing.py \
   --target http://host.docker.internal:5173 --timeout-seconds 10800
 ```
 
-The runner prints one `PASS`, `FAIL`, or `SKIP` per live assertion. This reproduction enables JEV and uses the owner's explicit non-ZDR authorization recorded below. It suppresses raw scan stdout/stderr and writes secret-free JSON beside that run under ignored `strix_runs/<run-name>/routing-verification.json`. It asserts completed QUICK status, positive in-process estimated cost no greater than USD 5, DeepSeek root usage, every child log's tier/model/reason/JEV choice against its persisted binding, valid JEV answer/usage logs, and a real failure record for every `jev_error`. A scan exit code of 2 is accepted only with a completed run because Strix uses it when findings are filed.
+The runner prints one `PASS`, `FAIL`, or `SKIP` per live assertion. This reproduction enables JEV and uses the owner's explicit non-ZDR authorization recorded below. It suppresses raw scan stdout/stderr and writes secret-free JSON beside that run under ignored `strix_runs/<run-name>/routing-verification.json`. It asserts completed QUICK status, positive in-process estimated cost no greater than USD 5, DeepSeek root usage, every child log's tier/model/reason/JEV choice against its persisted binding, non-empty live JEV answer evidence, no Expert child, and a real failure record for every `jev_error`. A scan exit code of 2 is accepted only with a completed run because Strix uses it when findings are filed. Historical command snippets below document the earlier three-target implementation; only the two-model command above is executable against current source.
 
 ## Assertions covered
 
-The deterministic tests exercise the actual `HybridModelRouter`, `BudgetGovernor`, hard-rule policy, and `configured_models` mapping with synthetic probability inputs. They assert the worker floor/no-signal path, inclusive specialist/expert thresholds, both share caps and downward fallback, the hard floor, JEV only for open choices, JEV precedence, transport/malformed fallback reason, missing-tier availability, and the DeepSeek → MiMo → GPT model map. Existing `tests/test_routing_jev.py` cases exercise the real adapter parser through fake HTTP transport, including malformed `choice` fallback.
+The deterministic tests exercise the actual `HybridModelRouter`, `BudgetGovernor`, hard-rule policy, and `configured_models` mapping with synthetic probability inputs. They assert the Worker floor/no-signal path, the inclusive Specialist threshold, Specialist share-cap fallback, the hard floor, JEV only for open choices, `expert`-choice clamping to Specialist, transport/malformed fallback reason, missing-tier availability, and the exact two-model DeepSeek → MiMo map. Existing `tests/test_routing_jev.py` cases exercise the real adapter parser through fake HTTP transport, including malformed `choice` fallback.
 
-With JEV enabled, the verified `choice` is logged with input/output token usage only. The router honors that choice within probability thresholds, hard-rule bounds, and the governor caps. It does not log task text, request state, probability values, credentials, or response bodies. If a live quick workload does not emit Specialist or Expert children, the verifier reports its tier distribution, choices, and final choice-to-tier reasons; offline tests exercise all three configured model mappings.
+With JEV enabled, the verified `choice` is logged with input/output token usage only. The router applies the choice within probability thresholds, the two-tier hard-rule bounds, and the Specialist governor cap; an upstream `expert` label is clamped to Specialist. It does not log task text, request state, probability values, credentials, or response bodies. If a live quick workload does not emit Specialist children, the verifier reports its tier distribution, choices, and final choice-to-tier reasons; offline tests cover both configured models and the clamp.
 
 ## Historical JEV-disabled evidence — 2026-10-06 (Asia/Ho_Chi_Minh)
 
@@ -202,5 +204,17 @@ UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 10800
 ```
 
 Each CLI process exited **2** with persisted completed status. The command-code contract failures are separate: `STRIX_ROUTING_LIVE_TESTS=1 UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 180s uv run --offline pytest tests/test_routing_live.py -k 'live_text_contract or live_full_tool_contract' -q` exited **1**, 8 passed / 4 GPT cases failed HTTP 403 `MODEL_NOT_IN_PLAN`; no retry or purchase followed.
+
+## Final two-model owner scope — 2026-10-07
+
+The owner’s decision removes the Expert tier and GPT target. Current map: Worker → `openai/deepseek/deepseek-v4.1-flash`; Specialist → `openai/xiaomi/mimo-v2.6-pro`. The JEV adapter remains `typesafe/jev` with question `route_tier` and its provider schema’s three labels; a returned `expert` choice clamps to Specialist. GPT-specific contract/entitlement gates are **NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo)**. Earlier HTTP 403 results are retained as historical observations, not blockers.
+
+The current reproduction command at the top of this document completed with verifier exit **0**. The target probe returned HTTP **200**; run `host-docker-internal-5173_da7d` completed QUICK with underlying Strix exit **2** (a finding/report was produced), persisted status `completed`, and `routing-verification.json` `overall=pass`. All **4/4** route log entries matched **4/4** persisted model bindings. Distribution: Worker 3 / Specialist 1; no Expert tier/model/route. The scan’s own log contains one real JEV answer, `worker` (408 input / 41 output tokens), bound to Worker/DeepSeek with `reason=jev`; there were zero JEV failures. This proves live JEV participation and the two-model ceiling; the scan emitted no JEV Specialist choice, whose exact model clamp is covered offline.
+
+The run recorded one finding, 18 surfaces reviewed, 13 gaps, and outcomes reported 2 / no-issue-found 1 / ruled-out 4 / needs-follow-up 11. Usage was 144 requests, 15,206,955 input + 192,628 output = 15,399,583 tokens, USD **0.4944239628 estimated** against the USD 5 cap (not an actual billing record). The Vite app returned HTTP 200, but its server log contained unresolved `jsr:@supabase/functions-js/edge-runtime.d.ts` imports for Supabase Edge Functions. Coverage is therefore partial; no expected-finding/PoC truth set was supplied, so quality parity remains unassessed. The owner’s source repository remained read-only at commit `6c0fc01e7f969bbf75ef663606aa4a4d7c747620`; it had only its pre-existing untracked `scripts/optimize_system.sh`.
+
+The two-model regression was test-first. The map/clamp tests initially exited **1** with two expected failures (old map contained Expert/GPT and `choice=expert` produced `Tier.EXPERT`). After implementation, the routing regression command passed **229 tests** with **10 opt-in live skips**. Final-source command `UV_CACHE_DIR=/tmp/strix-uv-cache LITELLM_LOCAL_MODEL_COST_MAP=True timeout 900s uv run --offline pytest -q -o faulthandler_timeout=30` exited **0**: **2567 passed, 10 skipped, 3 xfailed, 106 warnings**. `UV_CACHE_DIR=/tmp/strix-uv-cache timeout 300s make check-all` exited **0** (Ruff, mypy 141 files, Pyright 0 errors, Bandit clean).
+
+Secret-free tracked machine evidence: [two-model-quick-20261007.json](evidence/two-model-quick-20261007.json), copied from the original [ignored runtime artifact](../../strix_runs/host-docker-internal-5173_da7d/routing-verification.json). It contains the model map, per-decision tier/model/reason/choice, JEV choice and token counts, coverage, findings count, usage, and verifier status; it contains no credential or request body.
 
 After all live scans completed, the isolated Supabase stack was stopped with `supabase stop --workdir /tmp/strix-live-target-6c0fc01 --no-backup` (exit **0**) and its Vite process was stopped. The owner’s repository remained read-only at HEAD `6c0fc01e7f969bbf75ef663606aa4a4d7c747620`, with only its pre-existing untracked `scripts/optimize_system.sh`; no target files were changed.

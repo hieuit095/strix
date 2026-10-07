@@ -3,7 +3,7 @@
 > **Nguyên tắc quyết định:** giữ nguyên toàn bộ sức mạnh và luồng làm việc của Strix. Chỉ thêm khả năng chọn model phù hợp cho agent bằng JEV; không biến việc này thành một cuộc viết lại kiến trúc.
 > **Dành cho người triển khai:** dùng `executing-plans`, làm từng task có checkbox và kiểm chứng. Tài liệu này chưa phải yêu cầu triển khai mã.
 
-**Mục tiêu:** root tiếp tục dùng model người dùng chọn; child có thể dùng worker, MiMo hoặc GPT qua cùng CommandCode API. JEV hỗ trợ chọn tier khi hard rules chưa quyết định được. Giữ nguyên tools, prompts, skills, scan modes, tạo agent, session, resume, budget và khả năng kiểm thử bảo mật của Strix.
+**Mục tiêu (scope ban đầu, được owner thu hẹp ngày 07/10/2026):** root tiếp tục dùng model người dùng chọn; child chỉ dùng Worker/DeepSeek hoặc Specialist/MiMo qua cùng CommandCode API. JEV hỗ trợ chọn tier khi hard rules chưa quyết định được; provider có thể trả `expert`, nhưng Strix clamp lựa chọn đó thành Specialist. Giữ nguyên tools, prompts, skills, scan modes, tạo agent, session, resume, budget và khả năng kiểm thử bảo mật của Strix.
 
 **Kiến trúc:** tái dùng lõi `strix/routing/` đã có, thêm một HTTP adapter JEV và một helper nhỏ dựng RunConfig. Route một lần lúc spawn child; không đổi model giữa session. Tất cả model dùng cùng key/base/header CommandCode của cấu hình LLM hiện tại, không xây hệ thống nhà cung cấp mới.
 
@@ -15,7 +15,7 @@
 
 ### Làm trong lần nâng cấp này
 
-1. Cấu hình worker/specialist/expert, dùng chung kết nối CommandCode.
+1. Cấu hình đúng hai tier worker/specialist, dùng chung kết nối CommandCode.
 2. Chọn model child bằng hard rules + JEV + governor hiện có sau khi sửa lỗi floor.
 3. Truyền model đúng tới SDK usage hook.
 4. Persist model binding và khôi phục đúng khi resume.
@@ -85,7 +85,7 @@ Không dùng hướng dẫn BYOK của CLI CommandCode làm tài liệu Provider
 
 ### 3.2 Kết nối và tên model
 
-Base OpenAI client là `https://api.commandcode.ai/provider/v1`, auth `Authorization: Bearer <CMD_API_KEY>`. Chọn Chat Completions cho cả ba tier. JEV gọi POST `/systemone`, model `typesafe/jev`, không streaming. Các API khác được gateway hỗ trợ nhưng không cần tích hợp trong v1. Go không có API access. Nguồn: [Provider API](https://commandcode.ai/docs/provider).
+Base OpenAI client là `https://api.commandcode.ai/provider/v1`, auth `Authorization: Bearer <CMD_API_KEY>`. Chọn Chat Completions cho cả hai model target. JEV gọi POST `/systemone`, model `typesafe/jev`, không streaming. Các API khác được gateway hỗ trợ nhưng không cần tích hợp trong v1. Go không có API access. Nguồn: [Provider API](https://commandcode.ai/docs/provider).
 
 Snapshot từ [catalog](https://api.commandcode.ai/provider/v1/models), đối chiếu [Available Models](https://commandcode.ai/docs/reference/cli/models):
 
@@ -93,10 +93,9 @@ Snapshot từ [catalog](https://api.commandcode.ai/provider/v1/models), đối c
 |---|---|---|
 | Worker/root | `openai/deepseek/deepseek-v4.1-flash` | `deepseek/deepseek-v4.1-flash` |
 | Specialist | `openai/xiaomi/mimo-v2.6-pro` | `xiaomi/mimo-v2.6-pro` |
-| Expert | `openai/gpt-6.1-sol` | `gpt-6.1-sol` |
 | Decision | JEV adapter riêng | `typesafe/jev` |
 
-Ba model văn bản có `/chat/completions` và `/responses` trong catalog ngày khảo sát. Kiểm tra local với fake key xác nhận `StrixProvider` trả `OpenAIChatCompletionsModel` và đúng wire IDs ở bảng. Đây chưa phải kiểm chứng upstream tool/reasoning.
+Hai model target có `/chat/completions` và `/responses` trong catalog ngày khảo sát. Kiểm tra local với fake key xác nhận `StrixProvider` trả `OpenAIChatCompletionsModel` và đúng wire IDs ở bảng. Đây chưa phải kiểm chứng upstream tool/reasoning.
 
 Prefix `openai/` đầu chỉ chọn native SDK gateway; không thay tên hãng làm model. Không dùng `openrouter/...` khi endpoint là CommandCode, không gửi prefix route đó lên wire. `STRIX_API_TYPE=chat_completions` được đặt rõ để tránh suy API type theo catalog LiteLLM.
 
@@ -161,7 +160,6 @@ Giá snapshot USD/1M token, cần kiểm tra lại trước rollout: [Pricing & 
 |---|---:|---:|---:|
 | DeepSeek V4.1 Flash | 0.15 ngoài cao điểm / 0.30 cao điểm | 0.60 / 1.20 | 0.003 |
 | MiMo V2.6 Pro | 0.435 | 0.87 | 0.0036 |
-| GPT-6.1 Sol | 2.00 | 10.00 | 0.10 |
 | Jev | 0.042 | 0 | 0 |
 
 Chỉ sửa hook để ghi đúng model, đưa JEV usage vào `record_sdk_usage` hiện có. LiteLLM estimator có thể thiếu IDs mới hoặc khác giá gateway; phần tiền theo agent đang phân bổ theo token, không phải billing chính xác mỗi model. `--max-budget` vẫn là guard hiện có, không biến thành cam kết charge CommandCode hoặc hard cap với request concurrent.
@@ -197,11 +195,11 @@ AMBIGUOUS = frozenset({"business_logic", "race_conditions", "idor",
     "mass_assignment", "semantic_confusion"})
 ```
 
-Plain → worker; ambiguous → worker..specialist; high-impact → specialist..expert; severity high/critical nâng floor specialist. Severity hiện không có trong spawn args: không đoán nó từ task. Nếu chỉ còn một tier trong khoảng thì không gọi JEV. Các nhóm skill là policy ban đầu, không khẳng định SQLi/XSS luôn đơn giản.
+Plain → worker; ambiguous → worker..specialist; high-impact → specialist (floor và ceiling); severity high/critical nâng floor specialist. Severity hiện không có trong spawn args: không đoán nó từ task. Nếu chỉ còn một tier trong khoảng thì không gọi JEV. Các nhóm skill là policy ban đầu, không khẳng định SQLi/XSS luôn đơn giản.
 
-Expert đạt xác suất >=0.65 được ưu tiên, rồi specialist >=0.65; còn lại dùng floor. Clamp trước governor; governor không hạ dưới floor. Caps chỉ hạn chế nâng cấp tùy chọn, hard floor có thể vượt cap. Cap=0 tắt nâng cấp tùy chọn, không cấp “free first” expert.
+Specialist đạt xác suất >=0.65 thì được chọn; `expert` choice do JEV trả về được clamp thành Specialist vì đây là tier cao nhất có sẵn. Còn lại dùng floor. Clamp trước governor; governor không hạ dưới floor. Cap chỉ hạn chế nâng cấp tùy chọn, hard floor có thể vượt cap. Cap=0 tắt nâng cấp tùy chọn.
 
-Khi routing bật, specialist bắt buộc để đáp ứng floor; expert tùy chọn. Không cấu hình expert → ceiling specialist. Startup lỗi cấu hình phải báo rõ, không hạ high-impact xuống worker âm thầm.
+Khi routing bật, specialist bắt buộc để đáp ứng floor. Không có Expert model/tier/env alias; high-impact không bị hạ xuống worker âm thầm.
 
 ### 4.2 Settings cần thêm
 
@@ -211,13 +209,10 @@ Gắn `RoutingSettings` vào Settings/export, dùng `_BASE_CONFIG`, aliases và 
 |---|---|---|
 | `enabled` | `STRIX_ROUTING_ENABLED` | False |
 | `specialist_model` | `STRIX_ROUTING_SPECIALIST_MODEL` | None; strip rỗng→None |
-| `expert_model` | `STRIX_ROUTING_EXPERT_MODEL` | None; strip rỗng→None |
 | `jev_enabled` | `STRIX_ROUTING_JEV_ENABLED` | False |
 | `jev_timeout_s` | `STRIX_ROUTING_JEV_TIMEOUT_S` | 5; finite >0 |
 | `specialist_threshold` | `STRIX_ROUTING_SPECIALIST_THRESHOLD` | 0.65; finite 0<value<=1 |
-| `expert_threshold` | `STRIX_ROUTING_EXPERT_THRESHOLD` | 0.65; finite 0<value<=1 |
 | `specialist_cap` | `STRIX_ROUTING_SPECIALIST_CAP` | 0.25; finite 0<=value<=1 |
-| `expert_cap` | `STRIX_ROUTING_EXPERT_CAP` | 0.05; finite 0<=value<=1 |
 
 Worker/key/base/header/reasoning/timeout/prompt cache dùng LlmSettings hiện có. Không thêm credential tier hoặc JEV riêng. Chỉ khi routing bật mới validate yêu cầu specialist/cùng CommandCode/native Chat. Disabled không khởi tạo router/client hay gọi catalog.
 
@@ -272,7 +267,7 @@ Mọi task tính năng: viết test → chạy thấy đỏ đúng lý do → s�
 
 ```python
 async def test_repeated_high_impact_never_drops_below_floor() -> None:
-    r = make(FakeClient({"worker": 0.0, "specialist": 0.1, "expert": 0.9}))
+    r = make(FakeClient({"worker": 0.05, "specialist": 0.05, "expert": 0.9}))
     decisions = [await r.route(e("rce")) for _ in range(3)]
     assert all(d.tier >= Tier.SPECIALIST for d in decisions)
 ```
@@ -280,7 +275,7 @@ async def test_repeated_high_impact_never_drops_below_floor() -> None:
 - [ ] `uv run pytest tests/test_routing_router.py::test_repeated_high_impact_never_drops_below_floor -q` → hiện đỏ ở lần thứ ba.
 - [ ] Sửa admit theo §4.1/4.3: không await giữa check và tăng counter, tăng một lần theo tier cuối; thiếu floor hợp lệ là ValueError, startup ngăn trường hợp này.
 - [ ] Router nhận available tiers và `client=None` cho floor-only; chỉ hỏi JEV khi khoảng hợp lệ có >=2 tier. Chuyển fake/Protocol sang DecisionResult cùng task, giữ RouteDecision(tier, reason) nhỏ hiện có.
-- [ ] Test cap=0, thiếu expert, sole-choice không JEV, threshold 0.65 inclusive, floor/ceiling, exception fallback, CancelledError không bị nuốt. Không cần thêm policy rules mới.
+- [ ] Test cap=0, thiếu specialist, sole-choice không JEV, threshold 0.65 inclusive, floor/ceiling, `expert` JEV choice clamp sang Specialist, exception fallback, CancelledError không bị nuốt. Không cần thêm policy rules mới.
 - [ ] Chạy bốn routing files → xanh.
 
 **Cổng:** không chọn model thiếu, không phá floor; không nối runner trước khi core đúng.
@@ -365,7 +360,6 @@ export STRIX_API_TYPE="chat_completions"
 export STRIX_LLM="openai/deepseek/deepseek-v4.1-flash"
 export STRIX_ROUTING_ENABLED=true
 export STRIX_ROUTING_SPECIALIST_MODEL="openai/xiaomi/mimo-v2.6-pro"
-export STRIX_ROUTING_EXPERT_MODEL="openai/gpt-6.1-sol"
 export STRIX_ROUTING_JEV_ENABLED=false
 # Floor-only trước; true sau khi xác nhận policy metadata không ZDR và live contract.
 ```
@@ -402,10 +396,14 @@ Trạng thái nghiệm thu được ghi trong checklist §7 bên dưới; các c
 
 At this checkpoint, Tasks 00–07 were verified on current source: focused routing regression **234 passed, 14 live-gated skipped**; full suite **2589 passed, 14 skipped, 3 xfailed, 106 warnings** (exit 0); make check-all exit 0 (Ruff, mypy 141 files, Pyright 0 errors, Bandit no issues). Task 08 now has evidence-backed JEV non-ZDR authorization (owner-reported live HTTP 200, typesafe/jev, route_tier, choice specialist, usage 410/42), a successful final-strengthened live envelope test (1 passed), and a completed JEV-participating scan host-docker-internal-5173_9145 with its own verifier overall=pass. At this checkpoint the exact three-run comparison and real routed resume had not yet completed; subsequent evidence below supersedes that interim state.
 
-Remaining rollout limits are explicit: no owner-supplied expected finding/PoC ground-truth baseline, no CommandCode billing dashboard/charge record, and the live GPT-6.1 contract returned HTTP 403 MODEL_NOT_IN_PLAN. The Expert/GPT model mapping is verified offline, but live Expert selection is not observed. Candidate release/merge/deploy remains deferred while these gates are open. The coverage/PoC item in §7 is marked blocked by external gate; no quality-parity claim is made.
+Remaining rollout limits are explicit: no owner-supplied expected finding/PoC ground-truth baseline and no CommandCode billing dashboard/charge record. GPT-6.1 live use is no longer in scope under the owner’s 2026-10-07 two-model decision (DeepSeek + MiMo); its earlier HTTP 403 `MODEL_NOT_IN_PLAN` is historical, not a blocker. Candidate release/merge/deploy remains deferred while independent gates are open. The coverage/PoC item in §7 is marked blocked by external gate; no quality-parity claim is made.
 
 ### Final acceptance audit — 2026-10-07 ICT (supersedes interim status above)
 
 Tasks 00–07 are complete on current source: focused routing regression 234 passed/14 opt-in skips; full suite 2589 passed, 14 skipped, 3 xfailed, 106 warnings (exit 0); `make check-all` exit 0 (Ruff, mypy 141 files, Pyright 0 errors, Bandit clean). The JEV objective is verified: explicit owner-provided live non-ZDR proof (HTTP 200, `typesafe/jev`, `route_tier`, choice specialist, usage 410/42); live envelope test 1 passed; completed scan `9145` has four actual JEV answers and six bound decisions. The bounded routing-off/JEV-off/JEV-on comparison is recorded in Task 08 and `docs/routing/verification.md`; JEV-on run `3d42` completed with coverage incomplete (one Recon failure), so no quality-parity claim is made. A real routed child was restored on its exact DeepSeek model with counters preserved; new children routed independently after resume. Resume run `5f2f` exited 2 (completed findings report), `run.json.status=completed`, coverage complete=true, and the saved Worker/DeepSeek child had no JEV reroute. Its 147-request usage/coverage and secret-free snapshot evidence are in Task 08 and `docs/routing/verification.md`.
 
-§7 implementation, routing-off compatibility, floors/caps, saved child models/counters, JEV schema/privacy, offline regression, and current live JEV/resume gates are evidenced. The coverage/PoC quality item remains `[blocked by external gate]` until the owner supplies an expected-finding/roles/reproduction/PoC truth set. GPT-6.1 live contract also remains blocked by HTTP 403 `MODEL_NOT_IN_PLAN`; actual billing is blocked because the statement/dashboard is unread. Candidate release/merge/deploy is deferred; no such authorization was given. Evidence paths are `tasks/00-baseline.md` through `tasks/08-live-rollout.md` and `docs/routing/verification.md`.
+§7 implementation, routing-off compatibility, floors/caps, saved child models/counters, JEV schema/privacy, offline regression, and current live JEV/resume gates are evidenced. The coverage/PoC quality item remains `[blocked by external gate]` until the owner supplies an expected-finding/roles/reproduction/PoC truth set. GPT-specific gates are **NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo)**; actual billing is blocked because the statement/dashboard is unread. Candidate release/merge/deploy is deferred; no such authorization was given. Evidence paths are `tasks/00-baseline.md` through `tasks/08-live-rollout.md` and `docs/routing/verification.md`.
+
+### Owner scope amendment — 2026-10-07
+
+The owner superseded the original three-target design. The runtime target map is now exactly Worker → `openai/deepseek/deepseek-v4.1-flash` and Specialist → `openai/xiaomi/mimo-v2.6-pro`; `Tier.EXPERT`, GPT-6.1 model settings, expert threshold, and expert cap are removed. JEV remains the decision model (`typesafe/jev`, question `route_tier`) and its provider response schema still contains `worker|specialist|expert`; Strix clamps a JEV `expert` choice to Specialist because that is the highest configured tier. Offline verification covers the clamp and two-model mapping. GPT-6.1-specific live contract/entitlement gates are **NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo)**; prior HTTP 403 evidence is retained as history only. The new bounded QUICK scan and secret-free run evidence are recorded in `docs/routing/verification.md` and Task 08. Ground-truth/PoC quality parity and actual billing remain independent open gates.

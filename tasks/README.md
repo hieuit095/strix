@@ -58,8 +58,8 @@ Báo cáo cuối phải phân biệt: `offline verified`, `live verified`, `bloc
 | 04 | PASS — JEV schema/allowlist/usage/fallback | `tasks/04-jev-adapter.md`; offline regression plus actual live envelope/scan in Task 08 |
 | 05 | PASS — spawn/lifecycle/budget guards | `tasks/05-spawn-lifecycle.md`; spawn regression and real resumed admissions in Task 08 |
 | 06 | PASS — snapshot/resume binding/counters | `tasks/06-snapshot-resume.md`; regression and real `5f2f` resume evidence in Task 08 |
-| 07 | PASS — offline acceptance | Current-source suite: 2589 passed, 14 skipped, 3 xfailed; `make check-all` exit 0 |
-| 08 | BLOCKED — evidence runs completed; full quality/rollout acceptance remains open | `tasks/08-live-rollout.md`, `docs/routing/verification.md`; JEV-on comparison coverage incomplete (Recon failed), GPT entitlement 403, no truth set, and unread billing |
+| 07 | PASS — offline acceptance | Current two-model source: `uv run --offline pytest -q -o faulthandler_timeout=30` → 2567 passed, 10 skipped, 3 xfailed; `make check-all` exit 0 |
+| 08 | INCOMPLETE — two-model live routing/JEV verified; independent quality parity and actual billing remain open | `tasks/08-live-rollout.md`, `docs/routing/verification.md`; live run `da7d` overall pass for routing, but target coverage is partial, no truth set exists, and billing is unread. GPT-specific gates are N/A under the 2026-10-07 two-model owner decision. |
 
 ### Interim notes
 
@@ -67,7 +67,7 @@ The following continuation/JEV/root-cause notes preserve dated historical eviden
 
 ### Cập nhật JEV-centric — 06/10/2026 19:09 ICT
 
-Task 07 JEV precedence/fallback tests and full repository gates passed (details in Task 07 record). Owner-provided non-ZDR probe and two additional real JEV route calls prove the enabled endpoint path and Worker/Specialist mapping. The bounded scan completed with JEV enabled but emitted six rule-floor Worker decisions and no JEV call; the verifier correctly exits 1 for the scan-level JEV assertion. Task 08 remains incomplete for that scan gate, live Expert/GPT entitlement, quality/ground-truth/PoC parity, routed resume, and actual billing. Do not mark plan §7 rollout complete.
+Task 07 JEV precedence/fallback tests and full repository gates passed (details in Task 07 record). Owner-provided non-ZDR probe and two additional real JEV route calls prove the enabled endpoint path and Worker/Specialist mapping. The bounded scan completed with JEV enabled but emitted six rule-floor Worker decisions and no JEV call; the verifier correctly exits 1 for the scan-level JEV assertion. This is historical evidence superseded by the later scan-path correction. Task 08 remains incomplete for independent quality/ground-truth/PoC parity, routed resume, and actual billing. Do not mark plan §7 rollout complete.
 
 
 ### Final root-cause correction — 2026-10-06 21:02 ICT
@@ -77,4 +77,8 @@ The previous scan-level JEV failure was fixed: real Strix skill IDs were path-qu
 
 ### Final whole-list audit — 2026-10-07 (ICT)
 
-Owner explicitly authorized execution of every task 00–08, overriding the single-task default above. Tasks 00–07 now have no open checkboxes; tasks 01–06 were reconciled against their RED/GREEN records, their task regressions, and the same final full-suite/quality-gate evidence (2589 passed, 14 opt-in live skips, 3 xfailed; `make check-all` exit 0). Task 08 checklist items are either evidence-backed `[x]` or explicitly marked `blocked by external gate` with the missing entitlement, owner truth-set, or billing artifact stated. The completed JEV-enabled scan `9145`, three-run comparison (`7e8f` / `3a13` / `3d42`), and real resumed-child record (`5f2f`) are linked in Task 08 and `docs/routing/verification.md`. Task 08 is BLOCKED from an overall rollout pass: the JEV-on comparison run has one failed Recon agent, GPT-6.1 live entitlement is HTTP 403, no expected-findings/PoC truth set was provided, and billed charges are unread. Plan §7 keeps only quality/PoC at `blocked by external gate`; no release/merge/deploy was performed.
+Owner explicitly authorized execution of every task 00–08, overriding the single-task default above. Tasks 00–07 were reconciled against their RED/GREEN records, task regressions, and full-suite/quality-gate evidence. The completed JEV-enabled scan `9145`, three-run comparison (`7e8f` / `3a13` / `3d42`), and real resumed-child record (`5f2f`) are linked in Task 08 and `docs/routing/verification.md`. Task 08 remains incomplete overall because one JEV-on comparison had a failed Recon agent, no expected-findings/PoC truth set was supplied, and billed charges are unread. GPT-6.1 gates are **NOT APPLICABLE — owner decision 2026-10-07: 2-model scope (DeepSeek + MiMo)**; the old HTTP 403 is historical. Plan §7 keeps quality/PoC at `blocked by external gate`; no release/merge/deploy was performed.
+
+### Owner scope decision — 2026-10-07 07:08 ICT
+
+The final routing map contains Worker/DeepSeek and Specialist/MiMo only. JEV remains `typesafe/jev` / `route_tier`; a provider `expert` answer clamps to Specialist. Run `da7d` verified 4/4 route/binding pairs and one live JEV Worker decision. GPT-specific live gates are reclassified N/A by the owner decision; see Task 08 and [the dated reproduction/evidence](../docs/routing/verification.md). Partial app coverage, independent quality parity, and billing remain open.
